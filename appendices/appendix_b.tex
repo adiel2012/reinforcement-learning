@@ -1,0 +1,453 @@
+\chapter{Implementation Templates}
+\label{app:implementation}
+
+This appendix provides implementation templates and code examples for key reinforcement learning algorithms. The code is provided in Python and follows best practices for numerical stability and computational efficiency.
+
+\section{Basic RL Algorithm Implementations}
+
+\subsection{Value Iteration}
+
+\begin{lstlisting}[language=Python, caption=Value Iteration Implementation]
+import numpy as np
+
+def value_iteration(P, R, gamma, tol=1e-6, max_iter=1000):
+    """
+    Value iteration algorithm for finite MDPs.
+    
+    Parameters:
+    P: transition probability tensor [S x A x S]
+    R: reward matrix [S x A]
+    gamma: discount factor
+    tol: convergence tolerance
+    max_iter: maximum iterations
+    
+    Returns:
+    V: optimal value function
+    policy: optimal policy
+    """
+    S, A = R.shape
+    V = np.zeros(S)
+    
+    for i in range(max_iter):
+        V_old = V.copy()
+        
+        # Bellman optimality operator
+        Q = R + gamma * np.sum(P * V[None, None, :], axis=2)
+        V = np.max(Q, axis=1)
+        
+        # Check convergence
+        if np.max(np.abs(V - V_old)) < tol:
+            break
+    
+    # Extract optimal policy
+    Q = R + gamma * np.sum(P * V[None, None, :], axis=2)
+    policy = np.argmax(Q, axis=1)
+    
+    return V, policy
+\end{lstlisting}
+
+\subsection{Q-Learning}
+
+\begin{lstlisting}[language=Python, caption=Q-Learning Implementation]
+import numpy as np
+from collections import defaultdict
+
+class QLearning:
+    def __init__(self, n_states, n_actions, alpha=0.1, gamma=0.99, epsilon=0.1):
+        self.n_states = n_states
+        self.n_actions = n_actions
+        self.alpha = alpha
+        self.gamma = gamma
+        self.epsilon = epsilon
+        self.Q = np.zeros((n_states, n_actions))
+    
+    def select_action(self, state):
+        """Epsilon-greedy action selection"""
+        if np.random.random() < self.epsilon:
+            return np.random.randint(self.n_actions)
+        else:
+            return np.argmax(self.Q[state])
+    
+    def update(self, state, action, reward, next_state, done):
+        """Q-learning update rule"""
+        if done:
+            target = reward
+        else:
+            target = reward + self.gamma * np.max(self.Q[next_state])
+        
+        td_error = target - self.Q[state, action]
+        self.Q[state, action] += self.alpha * td_error
+        
+        return td_error
+    
+    def get_policy(self):
+        """Extract greedy policy"""
+        return np.argmax(self.Q, axis=1)
+\end{lstlisting}
+
+\subsection{Policy Gradient (REINFORCE)}
+
+\begin{lstlisting}[language=Python, caption=REINFORCE Implementation]
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import torch.nn.functional as F
+from torch.distributions import Categorical
+
+class PolicyNetwork(nn.Module):
+    def __init__(self, state_dim, action_dim, hidden_dim=128):
+        super(PolicyNetwork, self).__init__()
+        self.fc1 = nn.Linear(state_dim, hidden_dim)
+        self.fc2 = nn.Linear(hidden_dim, hidden_dim)
+        self.fc3 = nn.Linear(hidden_dim, action_dim)
+    
+    def forward(self, x):
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = F.softmax(self.fc3(x), dim=-1)
+        return x
+
+class REINFORCE:
+    def __init__(self, state_dim, action_dim, lr=1e-3, gamma=0.99):
+        self.policy = PolicyNetwork(state_dim, action_dim)
+        self.optimizer = optim.Adam(self.policy.parameters(), lr=lr)
+        self.gamma = gamma
+        
+    def select_action(self, state):
+        state = torch.FloatTensor(state).unsqueeze(0)
+        probs = self.policy(state)
+        m = Categorical(probs)
+        action = m.sample()
+        return action.item(), m.log_prob(action)
+    
+    def update(self, log_probs, rewards):
+        """Update policy using REINFORCE algorithm"""
+        # Compute discounted returns
+        returns = []
+        G = 0
+        for r in reversed(rewards):
+            G = r + self.gamma * G
+            returns.insert(0, G)
+        
+        returns = torch.FloatTensor(returns)
+        returns = (returns - returns.mean()) / (returns.std() + 1e-8)
+        
+        # Compute policy loss
+        policy_loss = []
+        for log_prob, G in zip(log_probs, returns):
+            policy_loss.append(-log_prob * G)
+        
+        policy_loss = torch.stack(policy_loss).sum()
+        
+        # Update policy
+        self.optimizer.zero_grad()
+        policy_loss.backward()
+        self.optimizer.step()
+        
+        return policy_loss.item()
+\end{lstlisting}
+
+\section{Environment Interface Specifications}
+
+\subsection{OpenAI Gym Compatible Environment}
+
+\begin{lstlisting}[language=Python, caption=Custom Environment Template]
+import gym
+from gym import spaces
+import numpy as np
+
+class CustomEnvironment(gym.Env):
+    """Template for custom RL environment"""
+    
+    def __init__(self):
+        super(CustomEnvironment, self).__init__()
+        
+        # Define action and observation spaces
+        self.action_space = spaces.Discrete(4)  # Example: 4 discrete actions
+        self.observation_space = spaces.Box(
+            low=-np.inf, high=np.inf, shape=(4,), dtype=np.float32
+        )
+        
+        # Initialize state
+        self.state = None
+        self.episode_length = 0
+        self.max_episode_length = 1000
+    
+    def reset(self):
+        """Reset environment to initial state"""
+        self.state = self._get_initial_state()
+        self.episode_length = 0
+        return self.state
+    
+    def step(self, action):
+        """Execute one step in the environment"""
+        # Validate action
+        assert self.action_space.contains(action), f"Invalid action: {action}"
+        
+        # Update state based on action
+        self.state = self._update_state(self.state, action)
+        
+        # Compute reward
+        reward = self._compute_reward(self.state, action)
+        
+        # Check if episode is done
+        done = self._is_done()
+        
+        # Additional info
+        info = {}
+        
+        self.episode_length += 1
+        
+        return self.state, reward, done, info
+    
+    def render(self, mode='human'):
+        """Render the environment"""
+        print(f"State: {self.state}")
+    
+    def _get_initial_state(self):
+        """Get initial state (implement based on problem)"""
+        return np.random.randn(4)
+    
+    def _update_state(self, state, action):
+        """Update state based on action (implement based on problem)"""
+        # Example: simple dynamics
+        next_state = state + 0.1 * action
+        return next_state
+    
+    def _compute_reward(self, state, action):
+        """Compute reward (implement based on problem)"""
+        # Example: negative squared distance from origin
+        return -np.sum(state**2)
+    
+    def _is_done(self):
+        """Check if episode should terminate"""
+        return self.episode_length >= self.max_episode_length
+\end{lstlisting}
+
+\section{Logging and Visualization Code}
+
+\subsection{Training Logger}
+
+\begin{lstlisting}[language=Python, caption=Training Logger]
+import matplotlib.pyplot as plt
+import numpy as np
+from collections import deque
+import json
+
+class TrainingLogger:
+    def __init__(self, window_size=100):
+        self.metrics = {}
+        self.window_size = window_size
+        self.episode_rewards = deque(maxlen=window_size)
+        self.episode_lengths = deque(maxlen=window_size)
+    
+    def log_episode(self, episode, reward, length, **kwargs):
+        """Log episode statistics"""
+        self.episode_rewards.append(reward)
+        self.episode_lengths.append(length)
+        
+        # Log additional metrics
+        for key, value in kwargs.items():
+            if key not in self.metrics:
+                self.metrics[key] = deque(maxlen=self.window_size)
+            self.metrics[key].append(value)
+        
+        # Print progress
+        if episode % 100 == 0:
+            avg_reward = np.mean(self.episode_rewards)
+            avg_length = np.mean(self.episode_lengths)
+            print(f"Episode {episode}: Avg Reward = {avg_reward:.2f}, "
+                  f"Avg Length = {avg_length:.2f}")
+    
+    def plot_training_curves(self, save_path=None):
+        """Plot training curves"""
+        fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+        
+        # Episode rewards
+        axes[0, 0].plot(self.episode_rewards)
+        axes[0, 0].set_title('Episode Rewards')
+        axes[0, 0].set_xlabel('Episode')
+        axes[0, 0].set_ylabel('Reward')
+        
+        # Episode lengths
+        axes[0, 1].plot(self.episode_lengths)
+        axes[0, 1].set_title('Episode Lengths')
+        axes[0, 1].set_xlabel('Episode')
+        axes[0, 1].set_ylabel('Length')
+        
+        # Moving averages
+        if len(self.episode_rewards) > 10:
+            window = min(50, len(self.episode_rewards) // 4)
+            moving_avg = np.convolve(self.episode_rewards, 
+                                   np.ones(window)/window, mode='valid')
+            axes[1, 0].plot(moving_avg)
+            axes[1, 0].set_title(f'Moving Average Reward (window={window})')
+            axes[1, 0].set_xlabel('Episode')
+            axes[1, 0].set_ylabel('Reward')
+        
+        # Additional metrics
+        if self.metrics:
+            metric_name = list(self.metrics.keys())[0]
+            axes[1, 1].plot(self.metrics[metric_name])
+            axes[1, 1].set_title(metric_name)
+            axes[1, 1].set_xlabel('Episode')
+            axes[1, 1].set_ylabel('Value')
+        
+        plt.tight_layout()
+        
+        if save_path:
+            plt.savefig(save_path)
+        plt.show()
+    
+    def save_metrics(self, filepath):
+        """Save metrics to JSON file"""
+        data = {
+            'episode_rewards': list(self.episode_rewards),
+            'episode_lengths': list(self.episode_lengths),
+            'metrics': {k: list(v) for k, v in self.metrics.items()}
+        }
+        with open(filepath, 'w') as f:
+            json.dump(data, f, indent=2)
+\end{lstlisting}
+
+\section{Performance Benchmarking Utilities}
+
+\subsection{Algorithm Comparison Framework}
+
+\begin{lstlisting}[language=Python, caption=Algorithm Comparison]
+import time
+import numpy as np
+from typing import Dict, List, Callable
+
+class AlgorithmComparison:
+    def __init__(self, environment_factory: Callable):
+        self.environment_factory = environment_factory
+        self.results = {}
+    
+    def run_algorithm(self, algorithm_name: str, algorithm_class, 
+                     algorithm_params: Dict, n_runs: int = 5, 
+                     n_episodes: int = 1000):
+        """Run algorithm multiple times and collect statistics"""
+        print(f"Running {algorithm_name}...")
+        
+        run_results = []
+        
+        for run in range(n_runs):
+            print(f"  Run {run + 1}/{n_runs}")
+            
+            # Create fresh environment and algorithm
+            env = self.environment_factory()
+            algorithm = algorithm_class(**algorithm_params)
+            
+            # Track performance
+            episode_rewards = []
+            episode_lengths = []
+            start_time = time.time()
+            
+            for episode in range(n_episodes):
+                state = env.reset()
+                episode_reward = 0
+                episode_length = 0
+                done = False
+                
+                while not done:
+                    action = algorithm.select_action(state)
+                    next_state, reward, done, _ = env.step(action)
+                    
+                    # Update algorithm
+                    if hasattr(algorithm, 'update'):
+                        algorithm.update(state, action, reward, next_state, done)
+                    
+                    state = next_state
+                    episode_reward += reward
+                    episode_length += 1
+                
+                episode_rewards.append(episode_reward)
+                episode_lengths.append(episode_length)
+            
+            training_time = time.time() - start_time
+            
+            run_results.append({
+                'episode_rewards': episode_rewards,
+                'episode_lengths': episode_lengths,
+                'training_time': training_time,
+                'final_performance': np.mean(episode_rewards[-100:])
+            })
+        
+        self.results[algorithm_name] = run_results
+    
+    def compare_algorithms(self):
+        """Generate comparison statistics"""
+        comparison = {}
+        
+        for alg_name, results in self.results.items():
+            final_perfs = [r['final_performance'] for r in results]
+            training_times = [r['training_time'] for r in results]
+            
+            comparison[alg_name] = {
+                'mean_performance': np.mean(final_perfs),
+                'std_performance': np.std(final_perfs),
+                'mean_training_time': np.mean(training_times),
+                'std_training_time': np.std(training_times)
+            }
+        
+        return comparison
+    
+    def plot_comparison(self):
+        """Plot algorithm comparison"""
+        plt.figure(figsize=(15, 5))
+        
+        # Performance comparison
+        plt.subplot(1, 3, 1)
+        alg_names = list(self.results.keys())
+        performances = []
+        errors = []
+        
+        for alg_name in alg_names:
+            final_perfs = [r['final_performance'] for r in self.results[alg_name]]
+            performances.append(np.mean(final_perfs))
+            errors.append(np.std(final_perfs))
+        
+        plt.bar(alg_names, performances, yerr=errors, capsize=5)
+        plt.title('Final Performance Comparison')
+        plt.ylabel('Average Return')
+        plt.xticks(rotation=45)
+        
+        # Learning curves
+        plt.subplot(1, 3, 2)
+        for alg_name in alg_names:
+            all_rewards = []
+            for result in self.results[alg_name]:
+                all_rewards.append(result['episode_rewards'])
+            
+            mean_rewards = np.mean(all_rewards, axis=0)
+            std_rewards = np.std(all_rewards, axis=0)
+            episodes = np.arange(len(mean_rewards))
+            
+            plt.plot(episodes, mean_rewards, label=alg_name)
+            plt.fill_between(episodes, mean_rewards - std_rewards, 
+                           mean_rewards + std_rewards, alpha=0.3)
+        
+        plt.title('Learning Curves')
+        plt.xlabel('Episode')
+        plt.ylabel('Episode Reward')
+        plt.legend()
+        
+        # Training time comparison
+        plt.subplot(1, 3, 3)
+        times = []
+        time_errors = []
+        
+        for alg_name in alg_names:
+            training_times = [r['training_time'] for r in self.results[alg_name]]
+            times.append(np.mean(training_times))
+            time_errors.append(np.std(training_times))
+        
+        plt.bar(alg_names, times, yerr=time_errors, capsize=5)
+        plt.title('Training Time Comparison')
+        plt.ylabel('Time (seconds)')
+        plt.xticks(rotation=45)
+        
+        plt.tight_layout()
+        plt.show()
+\end{lstlisting}

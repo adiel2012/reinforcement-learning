@@ -1,0 +1,435 @@
+\chapter{Dynamic Programming Foundations}
+\label{ch:dynamic-programming}
+
+Dynamic programming provides the theoretical and algorithmic foundation for reinforcement learning. This chapter develops the mathematical theory of dynamic programming with emphasis on convergence analysis, computational complexity, and connections to classical optimal control.
+
+\section{Principle of Optimality}
+
+The fundamental insight underlying dynamic programming is Bellman's principle of optimality, which enables the decomposition of complex sequential decision problems into simpler subproblems.
+
+\begin{theorem}[Principle of Optimality]
+An optimal policy has the property that whatever the initial state and initial decision are, the remaining decisions must constitute an optimal policy with regard to the state resulting from the first decision.
+\end{theorem}
+
+\subsection{Mathematical Formulation}
+
+For an MDP $(\state, \action, \transition, \reward, \discount)$, consider a finite-horizon problem with horizon $T$. Define the optimal value function:
+
+\begin{equation}
+V_t^*(s) = \max_{\pi} \expect\left[\sum_{k=t}^{T-1} \discount^{k-t} \reward(S_k, A_k) \mid S_t = s, \pi\right]
+\end{equation}
+
+\begin{theorem}[Finite-Horizon Optimality]
+The optimal value function satisfies the recursive relation:
+\begin{align}
+V_T^*(s) &= 0 \quad \forall s \in \state \\
+V_t^*(s) &= \max_{a \in \action} \left[\reward(s,a) + \discount \sum_{s' \in \state} \transition(s'|s,a) V_{t+1}^*(s')\right]
+\end{align}
+for $t = T-1, T-2, \ldots, 0$.
+\end{theorem}
+
+\begin{proof}
+The proof follows by backward induction. At time $T$, no more rewards can be collected, so $V_T^*(s) = 0$. For $t < T$, any optimal policy must choose the action that maximizes immediate reward plus discounted future value, leading to the recursive formulation.
+\end{proof}
+
+\subsection{Engineering Interpretation}
+
+The principle of optimality has direct parallels in engineering optimization:
+
+\begin{examplebox}[Optimal Control Example]
+Consider a spacecraft trajectory optimization problem:
+\begin{itemize}
+    \item State: position and velocity $(x, v) \in \real^6$
+    \item Control: thrust vector $u \in \real^3$
+    \item Dynamics: $\dot{x} = v$, $\dot{v} = u/m - \nabla \Phi(x)$ (gravitational field)
+    \item Cost: fuel consumption $\int_0^T \|u(t)\| dt$
+\end{itemize}
+
+The principle of optimality implies that if we have an optimal trajectory from Earth to Mars, then any sub-trajectory (e.g., from lunar orbit to Mars) must also be optimal for the sub-problem.
+\end{examplebox}
+
+\section{Value Iteration: Convergence Analysis}
+
+Value iteration is the most fundamental algorithm in dynamic programming, providing a constructive method for computing optimal value functions.
+
+\subsection{Algorithm Description}
+
+\begin{algorithm}
+\caption{Value Iteration}
+\begin{algorithmic}
+\REQUIRE MDP $(\state, \action, \transition, \reward, \discount)$, tolerance $\epsilon > 0$
+\ENSURE $\epsilon$-optimal value function $V$
+\STATE Initialize $V_0(s)$ arbitrarily for all $s \in \state$
+\STATE $k \leftarrow 0$
+\REPEAT
+    \FOR{each $s \in \state$}
+        \STATE $V_{k+1}(s) \leftarrow \max_{a \in \action} \left[\reward(s,a) + \discount \sum_{s' \in \state} \transition(s'|s,a) V_k(s')\right]$
+    \ENDFOR
+    \STATE $k \leftarrow k + 1$
+\UNTIL{$\|V_k - V_{k-1}\|_\infty < \epsilon(1-\discount)/(2\discount)$}
+\RETURN $V_k$
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Convergence Theory}
+
+\begin{theorem}[Convergence of Value Iteration]
+For any initial value function $V_0$, the value iteration sequence $\{V_k\}_{k=0}^\infty$ defined by $V_{k+1} = T^* V_k$ converges to the unique optimal value function $V^*$ at geometric rate $\discount$.
+
+Specifically:
+\begin{equation}
+\|V_k - V^*\|_\infty \leq \discount^k \|V_0 - V^*\|_\infty
+\end{equation}
+\end{theorem}
+
+\begin{proof}
+Since $T^*$ is a $\discount$-contraction in the supremum norm and $V^*$ is the unique fixed point of $T^*$, the result follows directly from the Banach fixed point theorem.
+\end{proof}
+
+\subsection{Error Bounds and Stopping Criteria}
+
+\begin{theorem}[Error Bounds for Value Iteration]
+If $\|V_{k+1} - V_k\|_\infty \leq \delta$, then:
+\begin{align}
+\|V_k - V^*\|_\infty &\leq \frac{\discount \delta}{1 - \discount} \\
+\|V_{k+1} - V^*\|_\infty &\leq \frac{\delta}{1 - \discount}
+\end{align}
+\end{theorem}
+
+\begin{proof}
+Using the triangle inequality and contraction property:
+\begin{align}
+\|V_k - V^*\|_\infty &= \|V_k - T^* V_k + T^* V_k - V^*\|_\infty \\
+&\leq \|V_k - T^* V_k\|_\infty + \|T^* V_k - T^* V^*\|_\infty \\
+&= \|V_k - V_{k+1}\|_\infty + \discount \|V_k - V^*\|_\infty
+\end{align}
+Solving for $\|V_k - V^*\|_\infty$ gives the first bound. The second follows similarly.
+\end{proof}
+
+\begin{corollary}[Practical Stopping Criterion]
+To achieve $\|V_k - V^*\|_\infty \leq \epsilon$, it suffices to stop when:
+\begin{equation}
+\|V_{k+1} - V_k\|_\infty \leq \epsilon(1 - \discount)
+\end{equation}
+\end{corollary}
+
+\subsection{Computational Complexity}
+
+\begin{theorem}[Sample Complexity of Value Iteration]
+To achieve $\epsilon$-optimal value function, value iteration requires:
+\begin{equation}
+O\left(\frac{\log(\epsilon^{-1}) + \log(\|V_0 - V^*\|_\infty)}{1 - \discount}\right)
+\end{equation}
+iterations.
+\end{theorem}
+
+For each iteration:
+\begin{itemize}
+    \item \textbf{Time complexity:} $O(|\state|^2 |\action|)$ for tabular case
+    \item \textbf{Space complexity:} $O(|\state|)$ for storing value function
+    \item \textbf{Total operations:} $O(|\state|^2 |\action| \log(\epsilon^{-1}) / (1-\discount))$
+\end{itemize}
+
+\section{Policy Iteration: Mathematical Guarantees}
+
+Policy iteration alternates between policy evaluation and policy improvement, providing an alternative approach with different computational characteristics.
+
+\subsection{Policy Evaluation}
+
+Given policy $\pi$, policy evaluation solves the linear system:
+\begin{equation}
+V^\pi = T^\pi V^\pi
+\end{equation}
+
+In matrix form for finite MDPs:
+\begin{equation}
+V^\pi = R^\pi + \discount P^\pi V^\pi
+\end{equation}
+
+where $R^\pi \in \real^{|\state|}$ and $P^\pi \in \real^{|\state| \times |\state|}$ are policy-specific reward and transition matrices.
+
+\begin{theorem}[Unique Solution to Policy Evaluation]
+The linear system $(I - \discount P^\pi) V^\pi = R^\pi$ has a unique solution:
+\begin{equation}
+V^\pi = (I - \discount P^\pi)^{-1} R^\pi
+\end{equation}
+since $\rho(P^\pi) \leq 1$ and $\discount < 1$ ensure $(I - \discount P^\pi)$ is invertible.
+\end{theorem}
+
+\subsection{Iterative Policy Evaluation}
+
+For large state spaces, direct matrix inversion is computationally prohibitive. Iterative policy evaluation uses:
+\begin{equation}
+V_{k+1}^\pi = T^\pi V_k^\pi
+\end{equation}
+
+\begin{theorem}[Convergence of Iterative Policy Evaluation]
+The sequence $\{V_k^\pi\}$ converges geometrically to $V^\pi$ at rate $\discount$:
+\begin{equation}
+\|V_k^\pi - V^\pi\|_\infty \leq \discount^k \|V_0^\pi - V^\pi\|_\infty
+\end{equation}
+\end{theorem}
+
+\subsection{Policy Improvement Analysis}
+
+\begin{theorem}[Strict Improvement or Optimality]
+Given policy $\pi$ and improved policy $\pi'$ defined by:
+\begin{equation}
+\pi'(s) \in \argmax_{a \in \action} Q^\pi(s,a)
+\end{equation}
+
+Then either:
+\begin{enumerate}
+    \item $V^{\pi'}(s) > V^\pi(s)$ for some $s \in \state$ (strict improvement), or
+    \item $V^{\pi'}(s) = V^\pi(s)$ for all $s \in \state$ (optimality)
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+By construction, $Q^\pi(s, \pi'(s)) \geq Q^\pi(s, \pi(s)) = V^\pi(s)$ for all $s$. If inequality is strict for any state, then by the policy evaluation equations, strict improvement propagates. If equality holds everywhere, then $\pi$ satisfies the Bellman optimality equation and is optimal.
+\end{proof}
+
+\subsection{Global Convergence}
+
+\begin{theorem}[Finite Convergence of Policy Iteration]
+For finite MDPs, policy iteration converges to an optimal policy in finitely many iterations. Specifically, the number of iterations is bounded by $|\action|^{|\state|}$.
+\end{theorem}
+
+\begin{proof}
+Since each iteration either strictly improves the policy or terminates at optimality, and there are finitely many deterministic policies, convergence must occur in finite time. The bound follows from counting the total number of deterministic policies.
+\end{proof}
+
+\section{Modified Policy Iteration}
+
+Modified policy iteration interpolates between value iteration and policy iteration, providing computational flexibility.
+
+\subsection{Algorithm and Convergence}
+
+\begin{algorithm}
+\caption{Modified Policy Iteration}
+\begin{algorithmic}
+\REQUIRE Initial policy $\pi_0$, evaluation steps $m$
+\STATE $i \leftarrow 0$
+\REPEAT
+    \STATE $V \leftarrow$ arbitrary initialization
+    \FOR{$k = 1, 2, \ldots, m$}
+        \STATE $V \leftarrow T^{\pi_i} V$
+    \ENDFOR
+    \STATE $\pi_{i+1}(s) \leftarrow \argmax_a [r(s,a) + \gamma \sum_{s'} P(s'|s,a) V(s')]$
+    \STATE $i \leftarrow i + 1$
+\UNTIL{convergence}
+\end{algorithmic}
+\end{algorithm}
+
+\begin{theorem}[Convergence of Modified Policy Iteration]
+Modified policy iteration with $m \geq 1$ evaluation steps converges to an optimal policy. The convergence rate depends on $m$:
+\begin{itemize}
+    \item $m = 1$: reduces to value iteration with rate $\discount$
+    \item $m = \infty$: reduces to policy iteration with finite convergence
+    \item $1 < m < \infty$: intermediate convergence rate
+\end{itemize}
+\end{theorem}
+
+\subsection{Optimal Choice of Evaluation Steps}
+
+The computational trade-off between evaluation and improvement can be optimized:
+
+\begin{theorem}[Optimal Evaluation Steps]
+For modified policy iteration, the optimal number of evaluation steps $m^*$ minimizes total computational cost:
+\begin{equation}
+m^* = \argmin_m \left[\text{cost per iteration} \times \text{number of iterations}\right]
+\end{equation}
+
+Under reasonable assumptions about computational costs, $m^* = O(\log(1/(1-\discount)))$.
+\end{theorem}
+
+\section{Asynchronous Dynamic Programming}
+
+Traditional DP algorithms update all states synchronously. Asynchronous variants can offer computational advantages and theoretical insights.
+
+\subsection{Gauss-Seidel Value Iteration}
+
+\begin{algorithm}
+\caption{Gauss-Seidel Value Iteration}
+\begin{algorithmic}
+\STATE Order states $s_1, s_2, \ldots, s_n$
+\REPEAT
+    \FOR{$i = 1, 2, \ldots, n$}
+        \STATE $V(s_i) \leftarrow \max_a \left[r(s_i,a) + \gamma \sum_{j} P(s_j|s_i,a) V(s_j)\right]$
+    \ENDFOR
+\UNTIL{convergence}
+\end{algorithmic}
+\end{algorithm}
+
+\begin{theorem}[Convergence of Gauss-Seidel Value Iteration]
+Gauss-Seidel value iteration converges to the optimal value function. The convergence rate can be faster than standard value iteration due to more frequent updates.
+\end{theorem}
+
+\subsection{Prioritized Sweeping}
+
+\begin{definition}[Bellman Error]
+For state $s$ and value function $V$, the Bellman error is:
+\begin{equation}
+\delta(s) = \left|\max_a \left[r(s,a) + \gamma \sum_{s'} P(s'|s,a) V(s')\right] - V(s)\right|
+\end{equation}
+\end{definition}
+
+Prioritized sweeping updates states in order of decreasing Bellman error, focusing computation on states where updates will have the largest impact.
+
+\begin{algorithm}
+\caption{Prioritized Sweeping}
+\begin{algorithmic}
+\STATE Initialize priority queue $\mathcal{Q}$ with all states
+\WHILE{$\mathcal{Q}$ not empty}
+    \STATE $s \leftarrow$ state with highest priority in $\mathcal{Q}$
+    \STATE Update $V(s)$ using Bellman equation
+    \STATE Remove $s$ from $\mathcal{Q}$
+    \FOR{each predecessor $s'$ of $s$}
+        \IF{Bellman error of $s'$ exceeds threshold}
+            \STATE Add $s'$ to $\mathcal{Q}$ with updated priority
+        \ENDIF
+    \ENDFOR
+\ENDWHILE
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Real-Time Dynamic Programming}
+
+Real-time DP focuses updates on states visited by a simulated or actual agent trajectory.
+
+\begin{algorithm}
+\caption{Real-Time Dynamic Programming}
+\begin{algorithmic}
+\STATE Initialize current state $s$
+\REPEAT
+    \STATE Update $V(s)$ using Bellman equation
+    \STATE Choose action $a = \argmax_a Q(s,a)$
+    \STATE Simulate or execute action: $s \leftarrow s'$ with probability $P(s'|s,a)$
+\UNTIL{termination}
+\end{algorithmic}
+\end{algorithm}
+
+\begin{theorem}[Convergence of RTDP]
+Under appropriate exploration conditions, real-time DP converges to optimal values on the states reachable under the optimal policy.
+\end{theorem}
+
+\section{Linear Programming Formulation}
+
+Dynamic programming problems can be formulated as linear programs, providing alternative solution methods and theoretical insights.
+
+\subsection{Primal LP Formulation}
+
+The optimal value function can be found by solving:
+\begin{align}
+\minimize_{V} \quad &\sum_{s \in \state} \alpha(s) V(s) \\
+\text{subject to} \quad &V(s) \geq r(s,a) + \gamma \sum_{s' \in \state} P(s'|s,a) V(s') \quad \forall s,a
+\end{align}
+
+where $\alpha(s) > 0$ represents state weights.
+
+\begin{theorem}[LP-DP Equivalence]
+The optimal solution to the linear program equals the optimal value function $V^*$.
+\end{theorem}
+
+\subsection{Dual LP Formulation}
+
+The dual problem involves finding an optimal state-action visitation measure:
+\begin{align}
+\maximize_{\mu} \quad &\sum_{s,a} \mu(s,a) r(s,a) \\
+\text{subject to} \quad &\sum_a \mu(s,a) - \gamma \sum_{s',a'} \mu(s',a') P(s|s',a') = \alpha(s) \quad \forall s \\
+&\mu(s,a) \geq 0 \quad \forall s,a
+\end{align}
+
+\begin{theorem}[Strong Duality]
+Under mild conditions, strong duality holds between the primal and dual formulations, and complementary slackness conditions characterize optimal policies.
+\end{theorem}
+
+\section{Connections to Classical Control Theory}
+
+\subsection{Discrete-Time Optimal Control}
+
+Consider the discrete-time optimal control problem:
+\begin{align}
+\minimize \quad &\sum_{t=0}^{T-1} L(x_t, u_t) + L_T(x_T) \\
+\text{subject to} \quad &x_{t+1} = f(x_t, u_t) + w_t \\
+&u_t \in \mathcal{U}(x_t)
+\end{align}
+
+The dynamic programming solution gives the Hamilton-Jacobi-Bellman equation:
+\begin{equation}
+V_t(x) = \min_{u \in \mathcal{U}(x)} [L(x,u) + \expect[V_{t+1}(f(x,u) + w)]]
+\end{equation}
+
+\subsection{Stochastic Optimal Control}
+
+For stochastic control systems $dx_t = f(x_t, u_t) dt + \sigma(x_t, u_t) dW_t$, the continuous-time HJB equation is:
+
+\begin{equation}
+\frac{\partial V}{\partial t} + \min_u \left[L(x,u) + \frac{\partial V}{\partial x} f(x,u) + \frac{1}{2} \text{tr}\left(\sigma(x,u)^T \frac{\partial^2 V}{\partial x^2} \sigma(x,u)\right)\right] = 0
+\end{equation}
+
+\subsection{Model Predictive Control (MPC)}
+
+MPC can be viewed as approximate dynamic programming with receding horizon:
+
+\begin{algorithm}
+\caption{Model Predictive Control}
+\begin{algorithmic}
+\REPEAT
+    \STATE Measure current state $x_t$
+    \STATE Solve optimization problem over horizon $[t, t+H]$:
+    \STATE $u_t^*, \ldots, u_{t+H-1}^* = \argmin \sum_{k=0}^{H-1} L(x_{t+k}, u_{t+k}) + L_H(x_{t+H})$
+    \STATE Apply $u_t^*$ and advance to next time step
+\UNTIL{termination}
+\end{algorithmic}
+\end{algorithm}
+
+The connection to DP provides stability and performance guarantees for MPC under appropriate conditions.
+
+\section{Computational Considerations}
+
+\subsection{Curse of Dimensionality}
+
+The computational complexity of DP algorithms scales exponentially with state space dimension:
+\begin{itemize}
+    \item Memory: $O(|\state|)$ for value function storage
+    \item Computation: $O(|\state|^2 |\action|)$ per iteration
+    \item For continuous spaces: requires discretization or function approximation
+\end{itemize}
+
+\subsection{Approximate Dynamic Programming}
+
+To handle large state spaces, approximate DP uses function approximation:
+\begin{equation}
+V(s) \approx \sum_{i=1}^n w_i \phi_i(s)
+\end{equation}
+
+where $\{\phi_i\}$ are basis functions and $\{w_i\}$ are parameters.
+
+\begin{theorem}[Error Propagation in Approximate DP]
+If the approximation error is bounded by $\epsilon$ in supremum norm:
+\begin{equation}
+\|V - \hat{V}\|_\infty \leq \epsilon
+\end{equation}
+then the policy derived from $\hat{V}$ satisfies:
+\begin{equation}
+\|V^{\hat{\pi}} - V^*\|_\infty \leq \frac{2\gamma \epsilon}{(1-\gamma)^2}
+\end{equation}
+\end{theorem}
+
+\section{Chapter Summary}
+
+This chapter developed the mathematical foundations of dynamic programming:
+
+\begin{itemize}
+    \item Principle of optimality and recursive decomposition
+    \item Value iteration: convergence theory, error bounds, complexity analysis
+    \item Policy iteration: linear algebra formulation, finite convergence
+    \item Modified policy iteration and computational trade-offs
+    \item Asynchronous variants: Gauss-Seidel, prioritized sweeping, real-time DP
+    \item Linear programming formulations and duality theory
+    \item Connections to classical optimal control and MPC
+    \item Computational challenges and approximate methods
+\end{itemize}
+
+These algorithmic foundations provide the basis for understanding modern reinforcement learning methods. The next chapter begins our exploration of learning algorithms that estimate value functions from experience rather than exact knowledge of the MDP.

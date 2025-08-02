@@ -1,0 +1,428 @@
+\chapter{Markov Decision Processes (MDPs)}
+\label{ch:mdps}
+
+\begin{keyideabox}[Chapter Overview]
+This chapter introduces Markov Decision Processes (MDPs), the mathematical foundation of reinforcement learning. We'll build intuition through concrete examples before diving into the formal theory, then explore solution methods like value iteration and policy iteration.
+\end{keyideabox}
+
+\begin{intuitionbox}[What is an MDP?]
+Think of an MDP as a mathematical description of a decision-making situation where:
+\begin{itemize}
+    \item You observe the current situation (state)
+    \item You choose an action based on what you observe
+    \item The world responds by transitioning to a new state and giving you a reward
+    \item This process repeats over time
+\end{itemize}
+The key insight is that the future only depends on the current state, not the entire history—this is the Markov property.
+\end{intuitionbox}
+
+Markov Decision Processes provide the mathematical framework for modeling sequential decision-making under uncertainty. This chapter develops the formal theory of MDPs with particular attention to mathematical rigor and engineering applications.
+
+\section{Understanding MDPs Through Examples}
+
+Before diving into formal definitions, let's build intuition through a concrete example.
+
+\begin{examplebox}[Grid World Navigation]
+Consider a robot navigating a $4 \times 4$ grid world:
+\begin{itemize}
+    \item \textbf{States}: Each cell in the grid (16 total states)
+    \item \textbf{Actions}: Move up, down, left, or right
+    \item \textbf{Transitions}: Move to adjacent cell (or stay put if hitting a wall)
+    \item \textbf{Rewards}: +10 for reaching the goal, -1 for each step, -10 for falling into holes
+    \item \textbf{Goal}: Find the shortest path to the target while avoiding obstacles
+\end{itemize}
+\end{examplebox}
+
+\section{Formal Definition and Mathematical Properties}
+
+Now that we have intuition, let's formalize these concepts.
+
+\begin{definition}[Markov Decision Process]
+A Markov Decision Process is a 5-tuple $(\state, \action, \transition, \reward, \discount)$ where:
+\begin{itemize}
+    \item $\state$ is the \textbf{state space} (all possible situations)
+    \item $\action$ is the \textbf{action space} (all possible actions)
+    \item $\transition: \state \times \action \times \state \to [0,1]$ is the \textbf{transition kernel} (dynamics)
+    \item $\reward: \state \times \action \to \real$ is the \textbf{reward function} (immediate feedback)
+    \item $\discount \in [0,1)$ is the \textbf{discount factor} (how much we value future rewards)
+\end{itemize}
+\end{definition}
+
+\begin{intuitionbox}[Understanding the Components]
+\begin{itemize}
+    \item \textbf{State space $\state$}: All possible configurations of your system
+    \item \textbf{Action space $\action$}: All decisions you can make in any given state
+    \item \textbf{Transition function $\transition$}: Describes how actions change states (the "physics" of your world)
+    \item \textbf{Reward function $\reward$}: Immediate feedback telling you how good an action was
+    \item \textbf{Discount factor $\discount$}: How much you care about future vs. immediate rewards (0 = only care about immediate, close to 1 = care about long-term)
+\end{itemize}
+\end{intuitionbox}
+
+The transition kernel satisfies $\sum_{s' \in \state} \transition(s,a,s') = 1$ for all $(s,a) \in \state \times \action$, and we write $\transition(s'|s,a) = \transition(s,a,s')$ for the probability of transitioning to state $s'$ from state $s$ under action $a$.
+
+\subsection{Assumptions and Regularity Conditions}
+
+For mathematical tractability, we typically assume:
+
+\begin{assumption}[Measurability]
+The state and action spaces are measurable spaces, and the transition kernel and reward function are measurable with respect to the appropriate $\sigma$-algebras.
+\end{assumption}
+
+\begin{assumption}[Bounded Rewards]
+The reward function satisfies $\sup_{s,a} |\reward(s,a)| \leq R_{max} < \infty$.
+\end{assumption}
+
+\begin{assumption}[Discount Factor]
+The discount factor satisfies $\discount \in [0,1)$ to ensure convergence of infinite-horizon value functions.
+\end{assumption}
+
+\subsection{State and Action Spaces}
+
+\subsubsection{Discrete Spaces}
+
+For finite MDPs with $|\state| = n$ and $|\action| = m$, we can represent:
+\begin{itemize}
+    \item Transition probabilities as tensors $P^a \in \real^{n \times n}$ for each action $a$
+    \item Rewards as matrices $R \in \real^{n \times m}$
+    \item Policies as matrices $\Pi \in [0,1]^{n \times m}$ with $\sum_a \Pi(s,a) = 1$
+\end{itemize}
+
+\subsubsection{Continuous Spaces}
+
+For continuous state spaces $\state \subseteq \real^d$, the transition kernel becomes a probability measure:
+\begin{equation}
+\transition(\cdot|s,a): \mathcal{B}(\state) \to [0,1]
+\end{equation}
+where $\mathcal{B}(\state)$ is the Borel $\sigma$-algebra on $\state$.
+
+\begin{examplebox}[Engineering Example: Inverted Pendulum]
+Consider an inverted pendulum with:
+\begin{itemize}
+    \item State: $s = (\theta, \dot{\theta}) \in [-\pi, \pi] \times [-10, 10]$ (angle and angular velocity)
+    \item Action: $a \in [-5, 5]$ (applied torque)
+    \item Dynamics: $\ddot{\theta} = \frac{g}{l}\sin\theta + \frac{a}{ml^2}$ plus noise
+    \item Reward: $r(s,a) = -\theta^2 - 0.1\dot{\theta}^2 - 0.01a^2$ (quadratic cost)
+\end{itemize}
+\end{examplebox}
+
+\section{Policies and Value Functions}
+
+\begin{intuitionbox}[What is a Policy?]
+A policy is simply a decision-making rule. It tells an agent what action to take in each possible state. Think of it as a strategy or game plan.
+\end{intuitionbox}
+
+\subsection{Types of Policies}
+
+\begin{definition}[Deterministic Policy]
+A deterministic policy is a function $\policy: \state \to \action$ that maps each state to exactly one action.
+\end{definition}
+
+\begin{examplebox}[Deterministic Policy Example]
+In our grid world: "Always move towards the goal" could be a deterministic policy where $\policy(\text{state}) = \text{direction\_to\_goal}$.
+\end{examplebox}
+
+\begin{definition}[Stochastic Policy]
+A stochastic policy $\policy: \state \to \Delta(\action)$ assigns a probability distribution over actions for each state, where $\Delta(\action)$ is the space of probability measures on $\action$.
+\end{definition}
+
+\begin{examplebox}[Stochastic Policy Example]
+In grid world: "Move towards goal with probability 0.8, move randomly otherwise" gives $\policy(\text{best\_action}|s) = 0.8$ and equal probability to other actions.
+\end{examplebox}
+
+\begin{definition}[History-Dependent Policy]
+A history-dependent policy depends on the entire sequence of past states and actions:
+$\policy_t: (\state \times \action)^t \times \state \to \Delta(\action)$
+\end{definition}
+
+\begin{remarkbox}[Why Focus on Markovian Policies?]
+While policies could potentially use the entire history, the Markov property means that optimal policies only need to depend on the current state. This greatly simplifies our analysis!
+\end{remarkbox}
+
+\begin{theorem}[Sufficiency of Markovian Policies]
+For any history-dependent policy, there exists a Markovian policy that achieves the same expected discounted reward.
+\end{theorem}
+
+\begin{proof}
+This follows from the Markov property of the state transitions. The expected future reward depends only on the current state, not the history of how that state was reached.
+\end{proof}
+
+\subsection{Value Function Theory}
+
+\begin{definition}[State Value Function]
+The state value function for policy $\policy$ is:
+\begin{equation}
+\valuefunction^\policy(s) = \expect^\policy\left[\sum_{t=0}^\infty \discount^t \reward(S_t, A_t) \mid S_0 = s\right]
+\end{equation}
+\end{definition}
+
+\begin{definition}[Action Value Function]
+The action value function (Q-function) for policy $\policy$ is:
+\begin{equation}
+\qvalue^\policy(s,a) = \expect^\policy\left[\sum_{t=0}^\infty \discount^t \reward(S_t, A_t) \mid S_0 = s, A_0 = a\right]
+\end{equation}
+\end{definition}
+
+\begin{theorem}[Existence and Uniqueness of Value Functions]
+Under Assumptions 1-3, the value functions $\valuefunction^\policy$ and $\qvalue^\policy$ exist, are unique, and satisfy $\|\valuefunction^\policy\|_\infty \leq \frac{R_{max}}{1-\discount}$.
+\end{theorem}
+
+\begin{proof}
+The geometric series $\sum_{t=0}^\infty \discount^t R_{max}$ converges to $\frac{R_{max}}{1-\discount}$ since $\discount < 1$. Uniqueness follows from the linearity of expectation.
+\end{proof}
+
+\subsection{Bellman Equations}
+
+The fundamental recursive relationships in reinforcement learning are the Bellman equations.
+
+\begin{theorem}[Bellman Equations for Policy Evaluation]
+For any policy $\policy$:
+\begin{align}
+\valuefunction^\policy(s) &= \sum_{a \in \action} \policy(a|s) \left[\reward(s,a) + \discount \sum_{s' \in \state} \transition(s'|s,a) \valuefunction^\policy(s')\right] \\
+\qvalue^\policy(s,a) &= \reward(s,a) + \discount \sum_{s' \in \state} \transition(s'|s,a) \sum_{a' \in \action} \policy(a'|s') \qvalue^\policy(s',a')
+\end{align}
+\end{theorem}
+
+\begin{proof}
+By the tower rule of conditional expectation:
+\begin{align}
+\valuefunction^\policy(s) &= \expect^\policy\left[\reward(S_0, A_0) + \discount \sum_{t=1}^\infty \discount^{t-1} \reward(S_t, A_t) \mid S_0 = s\right] \\
+&= \expect^\policy[\reward(S_0, A_0) | S_0 = s] + \discount \expect^\policy\left[\valuefunction^\policy(S_1) \mid S_0 = s\right]
+\end{align}
+Expanding the expectations gives the Bellman equation.
+\end{proof}
+
+\section{Optimal Policies and Bellman Optimality}
+
+\subsection{Partial Ordering on Policies}
+
+\begin{definition}[Policy Partial Order]
+Policy $\policy_1$ dominates policy $\policy_2$ (written $\policy_1 \geq \policy_2$) if:
+\begin{equation}
+\valuefunction^{\policy_1}(s) \geq \valuefunction^{\policy_2}(s) \quad \forall s \in \state
+\end{equation}
+\end{definition}
+
+\begin{theorem}[Existence of Optimal Policies]
+There exists an optimal deterministic policy $\policy^*$ such that:
+\begin{equation}
+\valuefunction^{\policy^*}(s) = \max_\policy \valuefunction^\policy(s) \equiv \valuefunction^*(s) \quad \forall s \in \state
+\end{equation}
+\end{theorem}
+
+\subsection{Bellman Optimality Equations}
+
+\begin{theorem}[Bellman Optimality Equations]
+The optimal value functions satisfy:
+\begin{align}
+\valuefunction^*(s) &= \max_{a \in \action} \left[\reward(s,a) + \discount \sum_{s' \in \state} \transition(s'|s,a) \valuefunction^*(s')\right] \\
+\qvalue^*(s,a) &= \reward(s,a) + \discount \sum_{s' \in \state} \transition(s'|s,a) \max_{a' \in \action} \qvalue^*(s',a')
+\end{align}
+\end{theorem}
+
+\begin{corollary}[Optimal Policy Extraction]
+An optimal policy can be extracted from the optimal value functions as:
+\begin{equation}
+\policy^*(s) \in \argmax_{a \in \action} \qvalue^*(s,a)
+\end{equation}
+\end{corollary}
+
+\section{Contraction Mapping Theorem and Fixed Points}
+
+The mathematical foundation for proving convergence of dynamic programming algorithms relies on contraction mapping theory.
+
+\subsection{Bellman Operators}
+
+\begin{definition}[Bellman Operator]
+For policy $\policy$, the Bellman operator $T^\policy: \real^\state \to \real^\state$ is defined by:
+\begin{equation}
+(T^\policy V)(s) = \sum_{a \in \action} \policy(a|s) \left[\reward(s,a) + \discount \sum_{s' \in \state} \transition(s'|s,a) V(s')\right]
+\end{equation}
+\end{definition}
+
+\begin{definition}[Bellman Optimality Operator]
+The Bellman optimality operator $T^*: \real^\state \to \real^\state$ is defined by:
+\begin{equation}
+(T^* V)(s) = \max_{a \in \action} \left[\reward(s,a) + \discount \sum_{s' \in \state} \transition(s'|s,a) V(s')\right]
+\end{equation}
+\end{definition}
+
+\subsection{Contraction Properties}
+
+\begin{theorem}[Contraction Property of Bellman Operators]
+Under the supremum norm $\|V\|_\infty = \max_{s \in \state} |V(s)|$:
+\begin{enumerate}
+    \item $T^\policy$ is a $\discount$-contraction: $\|T^\policy V_1 - T^\policy V_2\|_\infty \leq \discount \|V_1 - V_2\|_\infty$
+    \item $T^*$ is a $\discount$-contraction: $\|T^* V_1 - T^* V_2\|_\infty \leq \discount \|V_1 - V_2\|_\infty$
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+For the policy operator:
+\begin{align}
+|(T^\policy V_1)(s) - (T^\policy V_2)(s)| &= \left|\sum_{a} \policy(a|s) \discount \sum_{s'} \transition(s'|s,a) [V_1(s') - V_2(s')]\right| \\
+&\leq \sum_{a} \policy(a|s) \discount \sum_{s'} \transition(s'|s,a) |V_1(s') - V_2(s')| \\
+&\leq \discount \|V_1 - V_2\|_\infty \sum_{a} \policy(a|s) \sum_{s'} \transition(s'|s,a) \\
+&= \discount \|V_1 - V_2\|_\infty
+\end{align}
+The proof for $T^*$ follows similarly using the fact that the max operator is non-expansive.
+\end{proof}
+
+\subsection{Banach Fixed Point Theorem Application}
+
+\begin{theorem}[Banach Fixed Point Theorem]
+Let $(X, d)$ be a complete metric space and $T: X \to X$ be a contraction mapping with contraction factor $\gamma < 1$. Then:
+\begin{enumerate}
+    \item $T$ has a unique fixed point $x^* \in X$
+    \item For any $x_0 \in X$, the sequence $x_{n+1} = T(x_n)$ converges to $x^*$
+    \item The convergence rate is geometric: $d(x_n, x^*) \leq \gamma^n d(x_0, x^*)$
+\end{enumerate}
+\end{theorem}
+
+\begin{corollary}[Convergence of Value Iteration]
+The value iteration algorithm $V_{k+1} = T^* V_k$ converges geometrically to the unique optimal value function $\valuefunction^*$ at rate $\discount$.
+\end{corollary}
+
+\section{Policy Improvement and Optimality}
+
+\subsection{Policy Improvement Theorem}
+
+\begin{theorem}[Policy Improvement Theorem]
+Let $\policy$ be any policy and define the improved policy $\policy'$ by:
+\begin{equation}
+\policy'(s) \in \argmax_{a \in \action} \qvalue^\policy(s,a)
+\end{equation}
+Then $\policy' \geq \policy$, with strict inequality unless $\policy$ is optimal.
+\end{theorem}
+
+\begin{proof}
+For any state $s$:
+\begin{align}
+\qvalue^\policy(s, \policy'(s)) &\geq \qvalue^\policy(s, \policy(s)) = \valuefunction^\policy(s)
+\end{align}
+By the policy evaluation equation and induction, this implies $\valuefunction^{\policy'}(s) \geq \valuefunction^\policy(s)$.
+\end{proof}
+
+\subsection{Policy Iteration Algorithm}
+
+The policy improvement theorem leads to the policy iteration algorithm:
+
+\begin{algorithm}
+\caption{Policy Iteration}
+\begin{algorithmic}
+\REQUIRE Initial policy $\policy_0$
+\ENSURE Optimal policy $\policy^*$
+\STATE $k \leftarrow 0$
+\REPEAT
+\STATE \textbf{Policy Evaluation:} Solve $\valuefunction^{\policy_k} = T^{\policy_k} \valuefunction^{\policy_k}$
+\STATE \textbf{Policy Improvement:} $\policy_{k+1}(s) \leftarrow \argmax_a \qvalue^{\policy_k}(s,a)$
+\STATE $k \leftarrow k + 1$
+\UNTIL{$\policy_k = \policy_{k-1}$}
+\RETURN $\policy^* = \policy_k$
+\end{algorithmic}
+\end{algorithm}
+
+\begin{theorem}[Convergence of Policy Iteration]
+Policy iteration converges to an optimal policy in finitely many iterations for finite MDPs.
+\end{theorem}
+
+\section{Computational Complexity Analysis}
+
+\subsection{Value Iteration Complexity}
+
+For finite MDPs with $|\state| = n$ and $|\action| = m$:
+
+\begin{itemize}
+    \item \textbf{Time per iteration:} $O(mn^2)$ operations
+    \item \textbf{Iterations to $\epsilon$-accuracy:} $O(\log(\epsilon^{-1}))$ iterations
+    \item \textbf{Total complexity:} $O(mn^2 \log(\epsilon^{-1}))$
+\end{itemize}
+
+\subsection{Policy Iteration Complexity}
+
+\begin{itemize}
+    \item \textbf{Policy evaluation:} $O(n^3)$ for direct matrix inversion, $O(n^2)$ per iteration for iterative methods
+    \item \textbf{Policy improvement:} $O(mn^2)$
+    \item \textbf{Number of policy iterations:} At most $m^n$ (typically much smaller)
+\end{itemize}
+
+\subsection{Modified Policy Iteration}
+
+To balance the computational costs, modified policy iteration performs only $k$ steps of policy evaluation:
+
+\begin{algorithm}
+\caption{Modified Policy Iteration}
+\begin{algorithmic}
+\REQUIRE Initial policy $\policy_0$, evaluation steps $k$
+\STATE Initialize $V_0$ arbitrarily
+\FOR{$i = 0, 1, 2, \ldots$}
+    \FOR{$j = 1, 2, \ldots, k$}
+        \STATE $V_j \leftarrow T^{\policy_i} V_{j-1}$
+    \ENDFOR
+    \STATE $\policy_{i+1}(s) \leftarrow \argmax_a \left[r(s,a) + \gamma \sum_{s'} P(s'|s,a) V_k(s')\right]$
+\ENDFOR
+\end{algorithmic}
+\end{algorithm}
+
+\section{Connections to Classical Control Theory}
+
+\subsection{Linear Quadratic Regulator (LQR)}
+
+For linear dynamics $s_{t+1} = As_t + Ba_t + w_t$ and quadratic costs $r(s,a) = -s^TQs - a^TRa$, the optimal value function is quadratic: $\valuefunction^*(s) = -s^TPs$ where $P$ satisfies the discrete algebraic Riccati equation:
+
+\begin{equation}
+P = Q + A^TPA - A^TPB(R + B^TPB)^{-1}B^TPA
+\end{equation}
+
+The optimal policy is linear: $\policy^*(s) = -Ks$ where $K = (R + B^TPB)^{-1}B^TPA$.
+
+\subsection{Hamilton-Jacobi-Bellman Equation}
+
+For continuous-time systems, the Bellman equation becomes the Hamilton-Jacobi-Bellman (HJB) partial differential equation:
+
+\begin{equation}
+\frac{\partial V}{\partial t} + \min_a \left[r(s,a) + \frac{\partial V}{\partial s} f(s,a)\right] = 0
+\end{equation}
+
+where $f(s,a)$ is the system dynamics.
+
+\section{Advanced Topics}
+
+\subsection{Partially Observable MDPs (POMDPs)}
+
+\begin{definition}[POMDP]
+A POMDP extends an MDP with observations: $(\state, \action, \mathcal{O}, \transition, \reward, \mathcal{Z}, \discount)$ where:
+\begin{itemize}
+    \item $\mathcal{O}$ is the observation space
+    \item $\mathcal{Z}: \state \times \action \times \mathcal{O} \to [0,1]$ is the observation model
+\end{itemize}
+\end{definition}
+
+The optimal policy depends on the belief state $b(s) = \prob(S_t = s | h_t)$ where $h_t$ is the history of observations.
+
+\subsection{Constrained MDPs}
+
+\begin{definition}[Constrained MDP]
+A constrained MDP adds constraint functions $c_i: \state \times \action \to \real$ and thresholds $d_i$:
+\begin{align}
+\max_\policy \quad &\expect^\policy\left[\sum_{t=0}^\infty \discount^t \reward(S_t, A_t)\right] \\
+\text{subject to} \quad &\expect^\policy\left[\sum_{t=0}^\infty \discount^t c_i(S_t, A_t)\right] \leq d_i, \quad i = 1, \ldots, m
+\end{align}
+\end{definition}
+
+Solutions typically use Lagrangian methods and primal-dual algorithms.
+
+\section{Chapter Summary}
+
+This chapter established the mathematical foundations of Markov Decision Processes:
+
+\begin{itemize}
+    \item Formal definition of MDPs and regularity assumptions
+    \item Policy and value function theory with existence and uniqueness results
+    \item Bellman equations and optimality conditions
+    \item Contraction mapping theory and convergence guarantees
+    \item Dynamic programming algorithms: value iteration and policy iteration
+    \item Computational complexity analysis
+    \item Connections to classical control theory and advanced extensions
+\end{itemize}
+
+The mathematical framework developed here provides the foundation for all reinforcement learning algorithms. The next chapter examines dynamic programming methods in detail, providing the algorithmic foundation for modern RL techniques.

@@ -1,0 +1,381 @@
+\documentclass[11pt,twoside,openright]{book}
+
+% Essential packages for better readability
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[english]{babel}
+\usepackage{geometry}
+\usepackage{fancyhdr}
+\usepackage{graphicx}
+\usepackage{amsmath,amsfonts,amssymb,amsthm}
+\usepackage{mathtools}
+\usepackage{tikz}
+\usepackage{pgfplots}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{cleveref}
+\usepackage{booktabs}
+\usepackage{float}
+\usepackage{subcaption}
+\usepackage{enumitem}
+\usepackage{tcolorbox}
+\usepackage{natbib}
+\usepackage{microtype}  % Better typography
+\usepackage{setspace}   % Line spacing control
+\usepackage{parskip}    % Better paragraph spacing
+\usepackage{mdframed}   % Better boxes
+\usepackage{marginnote} % Margin notes
+\usepackage{sidenotes}  % Side notes
+
+% Page geometry - optimized for readability
+\geometry{
+    a4paper,
+    left=3cm,
+    right=2.5cm,
+    top=3cm,
+    bottom=3cm,
+    bindingoffset=0.5cm,
+    marginparwidth=2cm,  % For margin notes
+    marginparsep=0.5cm,
+    headheight=14pt      % Prevent header warnings
+}
+
+% TikZ libraries
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric,fit,backgrounds}
+\pgfplotsset{compat=1.17}
+
+% Enhanced theorem environments for better readability
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}[chapter]
+\newtheorem{theorem}{Theorem}[chapter]
+\newtheorem{lemma}{Lemma}[chapter]
+\newtheorem{proposition}{Proposition}[chapter]
+\newtheorem{corollary}{Corollary}[chapter]
+\newtheorem{example}{Example}[chapter]
+\newtheorem{remark}{Remark}[chapter]
+\newtheorem{intuition}{Intuition}[chapter]
+\newtheorem{keyidea}{Key Idea}[chapter]
+\newtheorem{application}{Application}[chapter]
+
+% Algorithm settings
+\renewcommand{\algorithmicrequire}{\textbf{Input:}}
+\renewcommand{\algorithmicensure}{\textbf{Output:}}
+
+% Code listing settings
+\lstset{
+    basicstyle=\ttfamily\footnotesize,
+    keywordstyle=\color{blue},
+    commentstyle=\color{green!50!black},
+    stringstyle=\color{red},
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    frame=single,
+    breaklines=true,
+    captionpos=b
+}
+
+% Enhanced color scheme for better readability
+\definecolor{theoremcolor}{RGB}{0,100,150}
+\definecolor{examplecolor}{RGB}{150,100,0}
+\definecolor{remarkcolor}{RGB}{100,150,0}
+\definecolor{intuitioncolor}{RGB}{120,60,180}
+\definecolor{keyideacolor}{RGB}{200,50,50}
+\definecolor{applicationcolor}{RGB}{50,150,80}
+\definecolor{warningcolor}{RGB}{255,140,0}
+\definecolor{notecolor}{RGB}{70,130,180}
+
+% Enhanced theorem boxes with better styling
+\newtcolorbox{theorembox}[1][]{
+    enhanced,
+    colback=theoremcolor!5,
+    colframe=theoremcolor,
+    title=#1,
+    fonttitle=\bfseries,
+    rounded corners,
+    drop shadow,
+    left=5pt,
+    right=5pt,
+    top=5pt,
+    bottom=5pt
+}
+
+\newtcolorbox{examplebox}[1][]{
+    enhanced,
+    colback=examplecolor!5,
+    colframe=examplecolor,
+    title=#1,
+    fonttitle=\bfseries,
+    rounded corners,
+    drop shadow,
+    left=5pt,
+    right=5pt,
+    top=5pt,
+    bottom=5pt
+}
+
+\newtcolorbox{remarkbox}[1][]{
+    enhanced,
+    colback=remarkcolor!5,
+    colframe=remarkcolor,
+    title=#1,
+    fonttitle=\bfseries,
+    rounded corners,
+    left=5pt,
+    right=5pt,
+    top=5pt,
+    bottom=5pt
+}
+
+\newtcolorbox{intuitionbox}[1][]{
+    enhanced,
+    colback=intuitioncolor!5,
+    colframe=intuitioncolor,
+    title=#1,
+    fonttitle=\bfseries,
+    rounded corners,
+    left=5pt,
+    right=5pt,
+    top=5pt,
+    bottom=5pt
+}
+
+\newtcolorbox{keyideabox}[1][]{
+    enhanced,
+    colback=keyideacolor!5,
+    colframe=keyideacolor,
+    title=#1,
+    fonttitle=\bfseries,
+    rounded corners,
+    drop shadow,
+    left=5pt,
+    right=5pt,
+    top=5pt,
+    bottom=5pt
+}
+
+\newtcolorbox{applicationbox}[1][]{
+    enhanced,
+    colback=applicationcolor!5,
+    colframe=applicationcolor,
+    title=#1,
+    fonttitle=\bfseries,
+    rounded corners,
+    left=5pt,
+    right=5pt,
+    top=5pt,
+    bottom=5pt
+}
+
+\newtcolorbox{warningbox}[1][]{
+    enhanced,
+    colback=warningcolor!5,
+    colframe=warningcolor,
+    title=#1,
+    fonttitle=\bfseries,
+    rounded corners,
+    left=5pt,
+    right=5pt,
+    top=5pt,
+    bottom=5pt
+}
+
+\newtcolorbox{notebox}[1][]{
+    enhanced,
+    colback=notecolor!5,
+    colframe=notecolor,
+    title=#1,
+    fonttitle=\bfseries,
+    rounded corners,
+    left=5pt,
+    right=5pt,
+    top=5pt,
+    bottom=5pt
+}
+
+% Custom commands for RL notation
+\newcommand{\state}{\mathcal{S}}
+\newcommand{\action}{\mathcal{A}}
+\newcommand{\reward}{\mathcal{R}}
+\newcommand{\policy}{\pi}
+\newcommand{\valuefunction}{V}
+\newcommand{\qvalue}{Q}
+\newcommand{\transition}{P}
+\newcommand{\discount}{\gamma}
+\newcommand{\expect}{\mathbb{E}}
+\newcommand{\prob}{\mathbb{P}}
+\newcommand{\real}{\mathbb{R}}
+\newcommand{\argmax}{\operatorname*{argmax}}
+\newcommand{\argmin}{\operatorname*{argmin}}
+
+% Readability enhancements
+\setlength{\parskip}{0.5em}        % Space between paragraphs
+\setlength{\parindent}{0pt}        % No paragraph indentation
+\renewcommand{\baselinestretch}{1.2} % Slightly increased line spacing
+
+% Better list formatting
+\setlist[itemize]{leftmargin=1.5em, itemsep=0.3em}
+\setlist[enumerate]{leftmargin=1.5em, itemsep=0.3em}
+
+% Enhanced mathematical display
+\allowdisplaybreaks[4]  % Allow page breaks in long equations
+\setlength{\abovedisplayskip}{1em}
+\setlength{\belowdisplayskip}{1em}
+\setlength{\abovedisplayshortskip}{0.5em}
+\setlength{\belowdisplayshortskip}{0.5em}
+
+% Chapter and section formatting for better readability
+\usepackage{titlesec}
+\titleformat{\chapter}[display]
+  {\normalfont\huge\bfseries\color{blue!70!black}}
+  {\chaptertitlename\ \thechapter}{20pt}{\Huge}
+\titlespacing*{\chapter}{0pt}{50pt}{40pt}
+
+\titleformat{\section}
+  {\normalfont\Large\bfseries\color{blue!60!black}}
+  {\thesection}{1em}{}
+\titlespacing*{\section}{0pt}{3.5ex plus 1ex minus .2ex}{2.3ex plus .2ex}
+
+\titleformat{\subsection}
+  {\normalfont\large\bfseries\color{blue!50!black}}
+  {\thesubsection}{1em}{}
+\titlespacing*{\subsection}{0pt}{3.25ex plus 1ex minus .2ex}{1.5ex plus .2ex}
+
+% Header and footer
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[LE]{\leftmark}
+\fancyhead[RO]{\rightmark}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+% Hyperref setup
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    filecolor=magenta,
+    urlcolor=cyan,
+    citecolor=green,
+    pdftitle={Reinforcement Learning for Engineer-Mathematicians},
+    pdfauthor={Your Name},
+    pdfsubject={Reinforcement Learning},
+    pdfkeywords={reinforcement learning, engineering, mathematics, control theory}
+}
+
+\begin{document}
+
+% Front matter
+\frontmatter
+
+% Title page
+\begin{titlepage}
+    \centering
+    \vspace*{2cm}
+    
+    {\Huge\bfseries Reinforcement Learning for Engineer-Mathematicians\par}
+    \vspace{1.5cm}
+    {\Large A Comprehensive Guide to Theory and Applications\par}
+    \vspace{2cm}
+    
+    {\Large Author Name\par}
+    \vspace{1cm}
+    
+    \vspace{2cm}
+    \begin{tcolorbox}[colback=blue!5,colframe=blue!40!black,title=About This Book]
+    This book provides a comprehensive introduction to reinforcement learning with a focus on mathematical rigor and practical applications. Each chapter includes:
+    \begin{itemize}
+        \item Intuitive explanations and motivating examples
+        \item Formal mathematical treatment
+        \item Practical algorithms and implementation notes
+        \item Interactive Jupyter notebooks with complete code
+    \end{itemize}
+    \end{tcolorbox}
+    
+    \includegraphics[width=0.3\textwidth]{figures/rl_diagram.png}
+    \vspace{1cm}
+    
+    {\large Published Year\par}
+    \vfill
+    
+    {\large Institution/Publisher\par}
+\end{titlepage}
+
+% Copyright page
+\newpage
+\thispagestyle{empty}
+\vspace*{\fill}
+\begin{center}
+Copyright \copyright\ 2024 Author Name\\
+All rights reserved.
+\end{center}
+\vspace*{\fill}
+
+% Dedication
+\newpage
+\thispagestyle{empty}
+\vspace*{\fill}
+\begin{center}
+\textit{To all engineers and mathematicians who seek to bridge\\
+the gap between theory and practice}
+\end{center}
+\vspace*{\fill}
+
+% Preface
+\chapter*{Preface}
+\addcontentsline{toc}{chapter}{Preface}
+
+This book bridges the gap between the mathematical rigor of reinforcement learning theory and its practical applications in engineering systems. Written for engineer-mathematicians, it provides both the theoretical foundations necessary to understand why algorithms work and the practical insights needed to apply them successfully in real-world scenarios.
+
+The field of reinforcement learning has evolved rapidly, with deep learning enabling applications previously thought impossible. However, many engineering applications require understanding the underlying mathematics to ensure safety, reliability, and optimal performance. This book fills that need by providing a comprehensive treatment that balances theory with practice.
+
+Each chapter builds upon previous concepts while maintaining mathematical rigor. Examples are drawn from engineering disciplines including robotics, control systems, power systems, manufacturing, and communications. The goal is to equip readers with both the theoretical understanding and practical skills needed to successfully apply reinforcement learning in their own domains.
+
+% Acknowledgments
+\chapter*{Acknowledgments}
+\addcontentsline{toc}{chapter}{Acknowledgments}
+
+The author wishes to thank the many researchers, colleagues, and students who contributed to the development of this book through discussions, feedback, and collaboration. Special thanks to the reinforcement learning community for their open sharing of ideas and implementations.
+
+% Table of contents
+\tableofcontents
+
+% List of figures
+\listoffigures
+
+% List of tables
+\listoftables
+
+% List of algorithms
+\listofalgorithms
+
+% Main matter
+\mainmatter
+
+% Include all parts and chapters
+\input{chapters/part1}
+\input{chapters/part2}
+\input{chapters/part3}
+\input{chapters/part4}
+\input{chapters/part5}
+\input{chapters/part6}
+
+% Back matter
+\backmatter
+
+% Appendices
+\appendix
+\input{appendices/appendix_a}
+\input{appendices/appendix_b}
+\input{appendices/appendix_c}
+
+% Bibliography
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+% Index
+\printindex
+
+\end{document}

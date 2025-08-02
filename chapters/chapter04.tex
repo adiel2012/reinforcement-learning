@@ -1,0 +1,295 @@
+\chapter{Monte Carlo Methods}
+\label{ch:monte-carlo}
+
+Monte Carlo methods form the foundation of model-free reinforcement learning, enabling value function estimation from sample episodes without requiring knowledge of the environment dynamics. This chapter develops the mathematical theory of Monte Carlo estimation in the RL context, with emphasis on convergence analysis and variance reduction techniques.
+
+\section{Monte Carlo Estimation Theory}
+
+Monte Carlo methods estimate expectations by sampling. In reinforcement learning, we use sample episodes to estimate value functions without requiring the transition probabilities or reward function.
+
+\subsection{Basic Monte Carlo Principle}
+
+Consider estimating the expectation $\expect[X]$ of random variable $X$. The Monte Carlo estimator uses $n$ independent samples $X_1, \ldots, X_n$:
+
+\begin{equation}
+\hat{\mu}_n = \frac{1}{n} \sum_{i=1}^n X_i
+\end{equation}
+
+\begin{theorem}[Strong Law of Large Numbers]
+If $\expect[|X|] < \infty$, then $\hat{\mu}_n \to \expect[X]$ almost surely as $n \to \infty$.
+\end{theorem}
+
+\begin{theorem}[Central Limit Theorem]
+If $\text{Var}(X) = \sigma^2 < \infty$, then:
+\begin{equation}
+\sqrt{n}(\hat{\mu}_n - \expect[X]) \xrightarrow{d} \mathcal{N}(0, \sigma^2)
+\end{equation}
+\end{theorem}
+
+\subsection{Application to Value Function Estimation}
+
+For policy $\pi$, the value function is:
+\begin{equation}
+V^\pi(s) = \expect^\pi\left[\sum_{t=0}^\infty \gamma^t R_{t+1} \mid S_0 = s\right]
+\end{equation}
+
+Monte Carlo estimation uses sample returns $G_t = \sum_{k=0}^\infty \gamma^k R_{t+k+1}$ from episodes starting in state $s$ to estimate $V^\pi(s)$.
+
+\section{First-Visit vs. Every-Visit Methods}
+
+\subsection{First-Visit Monte Carlo}
+
+\begin{algorithm}
+\caption{First-Visit Monte Carlo Policy Evaluation}
+\begin{algorithmic}
+\REQUIRE Policy $\pi$ to evaluate
+\STATE Initialize $V(s) \in \real$ arbitrarily for all $s \in \mathcal{S}$
+\STATE Initialize $Returns(s) \leftarrow$ empty list for all $s \in \mathcal{S}$
+\REPEAT
+    \STATE Generate episode following $\pi$: $S_0, A_0, R_1, S_1, A_1, R_2, \ldots, S_{T-1}, A_{T-1}, R_T$
+    \STATE $G \leftarrow 0$
+    \FOR{$t = T-1, T-2, \ldots, 0$}
+        \STATE $G \leftarrow \gamma G + R_{t+1}$
+        \IF{$S_t$ not appear in $S_0, S_1, \ldots, S_{t-1}$}
+            \STATE Append $G$ to $Returns(S_t)$
+            \STATE $V(S_t) \leftarrow$ average$(Returns(S_t))$
+        \ENDIF
+    \ENDFOR
+\UNTIL{convergence}
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Every-Visit Monte Carlo}
+
+Every-visit MC updates the value estimate every time a state is visited in an episode, not just the first time.
+
+\begin{theorem}[Convergence of First-Visit Monte Carlo]
+First-visit Monte Carlo converges to $V^\pi(s)$ as the number of first visits to state $s$ approaches infinity, assuming:
+\begin{enumerate}
+    \item Episodes are generated according to policy $\pi$
+    \item Each state has non-zero probability of being the starting state
+    \item Returns have finite variance
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+Each first visit to state $s$ provides an unbiased sample of the return. By the strong law of large numbers, the sample average converges to the true expectation.
+\end{proof}
+
+\begin{theorem}[Convergence of Every-Visit Monte Carlo]
+Every-visit Monte Carlo also converges to $V^\pi(s)$ under similar conditions, despite the correlation between visits within the same episode.
+\end{theorem}
+
+\section{Variance Reduction Techniques}
+
+\subsection{Incremental Implementation}
+
+Instead of storing all returns, we can update estimates incrementally:
+
+\begin{equation}
+V_{n+1}(s) = V_n(s) + \frac{1}{n+1}[G_n - V_n(s)]
+\end{equation}
+
+More generally, with step size $\alpha$:
+\begin{equation}
+V(s) \leftarrow V(s) + \alpha[G - V(s)]
+\end{equation}
+
+\subsection{Baseline Subtraction}
+
+To reduce variance, we can subtract a baseline $b(s)$ that doesn't depend on the action:
+
+\begin{equation}
+G_t - b(S_t)
+\end{equation}
+
+The optimal baseline that minimizes variance is:
+\begin{equation}
+b^*(s) = \frac{\expect[G_t^2 \mid S_t = s]}{\expect[G_t \mid S_t = s]} = \expect[G_t \mid S_t = s] = V^\pi(s)
+\end{equation}
+
+\subsection{Control Variates}
+
+For correlated random variable $Y$ with known expectation $\expect[Y] = \mu_Y$:
+\begin{equation}
+\hat{\mu}_{CV} = \hat{\mu}_X - c(\hat{\mu}_Y - \mu_Y)
+\end{equation}
+
+The optimal coefficient is:
+\begin{equation}
+c^* = \frac{\text{Cov}(X,Y)}{\text{Var}(Y)}
+\end{equation}
+
+\section{Importance Sampling in RL}
+
+Importance sampling enables off-policy learning by weighting samples according to the ratio of target to behavior policy probabilities.
+
+\subsection{Ordinary Importance Sampling}
+
+To estimate $\expect_\pi[X]$ using samples from policy $\mu$:
+\begin{equation}
+\hat{\mu}_{IS} = \frac{1}{n} \sum_{i=1}^n \rho_i X_i
+\end{equation}
+
+where $\rho_i = \frac{\pi(A_i|S_i)}{\mu(A_i|S_i)}$ is the importance sampling ratio.
+
+\begin{theorem}[Unbiasedness of Importance Sampling]
+$\expect[\hat{\mu}_{IS}] = \expect_\pi[X]$ if $\mu(a|s) > 0$ whenever $\pi(a|s) > 0$.
+\end{theorem}
+
+\subsection{Weighted Importance Sampling}
+
+To reduce variance when some importance weights are very large:
+\begin{equation}
+\hat{\mu}_{WIS} = \frac{\sum_{i=1}^n \rho_i X_i}{\sum_{i=1}^n \rho_i}
+\end{equation}
+
+\begin{theorem}[Bias-Variance Tradeoff]
+Weighted importance sampling is biased but often has lower variance than ordinary importance sampling:
+\begin{align}
+\text{Bias}[\hat{\mu}_{WIS}] &\neq 0 \text{ (in general)} \\
+\text{Var}[\hat{\mu}_{WIS}] &\leq \text{Var}[\hat{\mu}_{IS}] \text{ (typically)}
+\end{align}
+\end{theorem}
+
+\subsection{Per-Decision Importance Sampling}
+
+For episodic tasks, the importance sampling ratio for a complete episode is:
+\begin{equation}
+\rho_{t:T-1} = \prod_{k=t}^{T-1} \frac{\pi(A_k|S_k)}{\mu(A_k|S_k)}
+\end{equation}
+
+This can have very high variance. Per-decision importance sampling uses only the relevant portion of the trajectory.
+
+\section{Off-Policy Monte Carlo Methods}
+
+\subsection{Off-Policy Policy Evaluation}
+
+\begin{algorithm}
+\caption{Off-Policy Monte Carlo Policy Evaluation}
+\begin{algorithmic}
+\REQUIRE Target policy $\pi$, behavior policy $\mu$
+\STATE Initialize $V(s) \in \real$ arbitrarily for all $s \in \mathcal{S}$
+\STATE Initialize $C(s) \leftarrow 0$ for all $s \in \mathcal{S}$
+\REPEAT
+    \STATE Generate episode using $\mu$: $S_0, A_0, R_1, \ldots, S_{T-1}, A_{T-1}, R_T$
+    \STATE $G \leftarrow 0$
+    \STATE $W \leftarrow 1$
+    \FOR{$t = T-1, T-2, \ldots, 0$}
+        \STATE $G \leftarrow \gamma G + R_{t+1}$
+        \STATE $C(S_t) \leftarrow C(S_t) + W$
+        \STATE $V(S_t) \leftarrow V(S_t) + \frac{W}{C(S_t)}[G - V(S_t)]$
+        \STATE $W \leftarrow W \frac{\pi(A_t|S_t)}{\mu(A_t|S_t)}$
+        \IF{$W = 0$}
+            \STATE break
+        \ENDIF
+    \ENDFOR
+\UNTIL{convergence}
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Off-Policy Monte Carlo Control}
+
+\begin{algorithm}
+\caption{Off-Policy Monte Carlo Control}
+\begin{algorithmic}
+\STATE Initialize $Q(s,a) \in \real$ arbitrarily for all $s,a$
+\STATE Initialize $C(s,a) \leftarrow 0$ for all $s,a$
+\STATE Initialize $\pi(s) \leftarrow \argmax_a Q(s,a)$ for all $s$
+\REPEAT
+    \STATE Choose any soft policy $\mu$ (e.g., $\epsilon$-greedy)
+    \STATE Generate episode using $\mu$
+    \STATE $G \leftarrow 0$
+    \STATE $W \leftarrow 1$
+    \FOR{$t = T-1, T-2, \ldots, 0$}
+        \STATE $G \leftarrow \gamma G + R_{t+1}$
+        \STATE $C(S_t, A_t) \leftarrow C(S_t, A_t) + W$
+        \STATE $Q(S_t, A_t) \leftarrow Q(S_t, A_t) + \frac{W}{C(S_t, A_t)}[G - Q(S_t, A_t)]$
+        \STATE $\pi(S_t) \leftarrow \argmax_a Q(S_t, a)$
+        \IF{$A_t \neq \pi(S_t)$}
+            \STATE break
+        \ENDIF
+        \STATE $W \leftarrow W \frac{1}{\mu(A_t|S_t)}$
+    \ENDFOR
+\UNTIL{convergence}
+\end{algorithmic}
+\end{algorithm}
+
+\section{Convergence Analysis and Sample Complexity}
+
+\subsection{Finite Sample Analysis}
+
+\begin{theorem}[Finite Sample Bound for Monte Carlo]
+Let $V_n(s)$ be the Monte Carlo estimate after $n$ visits to state $s$. Under bounded rewards $|R| \leq R_{max}$:
+\begin{equation}
+\prob\left(|V_n(s) - V^\pi(s)| \geq \epsilon\right) \leq 2\exp\left(-\frac{2n\epsilon^2(1-\gamma)^2}{R_{max}^2}\right)
+\end{equation}
+\end{theorem}
+
+\subsection{Asymptotic Convergence Rate}
+
+\begin{theorem}[Central Limit Theorem for Monte Carlo]
+If $\text{Var}^\pi[G_t | S_t = s] = \sigma^2(s) < \infty$, then:
+\begin{equation}
+\sqrt{n}(V_n(s) - V^\pi(s)) \xrightarrow{d} \mathcal{N}(0, \sigma^2(s))
+\end{equation}
+\end{theorem}
+
+This gives the convergence rate $O(n^{-1/2})$, which is slower than the $O(n^{-1})$ rate achievable by temporal difference methods under certain conditions.
+
+\subsection{Sample Complexity}
+
+\begin{theorem}[Sample Complexity of Monte Carlo]
+To achieve $\epsilon$-accurate value function estimation with probability $1-\delta$:
+\begin{equation}
+n \geq \frac{R_{max}^2 \log(2/\delta)}{2\epsilon^2(1-\gamma)^2}
+\end{equation}
+samples are sufficient.
+\end{theorem}
+
+\section{Practical Considerations}
+
+\subsection{Exploration vs. Exploitation}
+
+Monte Carlo control methods face the exploration-exploitation dilemma. Common approaches:
+
+\textbf{Exploring Starts:} Assume episodes start in randomly selected state-action pairs.
+
+\textbf{$\epsilon$-Greedy Policies:} Use soft policies that maintain exploration:
+\begin{equation}
+\pi(a|s) = \begin{cases}
+1 - \epsilon + \frac{\epsilon}{|\mathcal{A}(s)|} & \text{if } a = \argmax_a Q(s,a) \\
+\frac{\epsilon}{|\mathcal{A}(s)|} & \text{otherwise}
+\end{cases}
+\end{equation}
+
+\subsection{Function Approximation}
+
+For large state spaces, we approximate value functions:
+\begin{equation}
+V(s) \approx \hat{V}(s, \mathbf{w}) = \mathbf{w}^T \boldsymbol{\phi}(s)
+\end{equation}
+
+The Monte Carlo update becomes:
+\begin{equation}
+\mathbf{w} \leftarrow \mathbf{w} + \alpha[G_t - \hat{V}(S_t, \mathbf{w})]\nabla_\mathbf{w} \hat{V}(S_t, \mathbf{w})
+\end{equation}
+
+\begin{theorem}[Convergence with Linear Function Approximation]
+Under linear function approximation with linearly independent features, Monte Carlo methods converge to the best linear approximation in the $L^2$ norm weighted by the stationary distribution.
+\end{theorem}
+
+\section{Chapter Summary}
+
+This chapter established the foundations of Monte Carlo methods in reinforcement learning:
+
+\begin{itemize}
+    \item Monte Carlo estimation theory and convergence properties
+    \item First-visit vs. every-visit methods with convergence guarantees
+    \item Variance reduction techniques: baselines, control variates, importance sampling
+    \item Off-policy learning through importance sampling with bias-variance analysis
+    \item Sample complexity bounds and convergence rates
+    \item Practical considerations for exploration and function approximation
+\end{itemize}
+
+Monte Carlo methods provide unbiased estimates and are conceptually simple, but they require complete episodes and have slower convergence than temporal difference methods. The next chapter develops temporal difference learning, which enables learning from individual transitions.
