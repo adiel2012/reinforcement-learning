@@ -1,4 +1,631 @@
-\chapter{Chapter 14 Title}
-\label{ch:chapter14}
+\chapter{Model-Based Reinforcement Learning}
+\label{ch:model-based-rl}
 
-This chapter will cover...
+\begin{keyideabox}[Chapter Overview]
+Model-based reinforcement learning learns a model of the environment dynamics and uses it for planning and decision making. This chapter covers the spectrum from classical planning algorithms to modern deep learning approaches, including Dyna-Q, model-predictive control, world models, and breakthrough algorithms like AlphaZero. We examine how learned models can dramatically improve sample efficiency and enable sophisticated planning strategies.
+\end{keyideabox}
+
+\begin{intuitionbox}[Learning to Drive with a Simulator]
+Imagine learning to drive a car. A model-free approach would require actually driving the car for thousands of hours, learning from each real experience. A model-based approach would first learn how the car responds to different inputs (steering, acceleration, braking) by building a mental "simulator" of car dynamics. Once this simulator is reasonably accurate, you can practice driving mentally, trying different scenarios without the cost and risk of real driving. This mental practice dramatically speeds up learning and allows exploration of dangerous scenarios safely.
+\end{intuitionbox}
+
+\section{Introduction to Model-Based RL}
+
+\subsection{Model-Free vs Model-Based Approaches}
+
+\textbf{Model-Free RL:}
+\begin{itemize}
+    \item Learns value functions or policies directly from experience
+    \item No explicit representation of environment dynamics
+    \item Sample inefficient but robust to model errors
+    \item Examples: Q-learning, policy gradients
+\end{itemize}
+
+\textbf{Model-Based RL:}
+\begin{itemize}
+    \item Learns a model of environment dynamics
+    \item Uses model for planning and decision making
+    \item Sample efficient but sensitive to model errors
+    \item Examples: Dyna-Q, PETS, AlphaZero
+\end{itemize}
+
+\subsection{Model Components}
+
+A complete environment model typically includes:
+
+\textbf{Dynamics Model:} $\hat{P}(s_{t+1}|s_t, a_t)$
+\begin{itemize}
+    \item Predicts next state given current state and action
+    \item May be deterministic or stochastic
+    \item Can be parametric (neural network) or non-parametric (table)
+\end{itemize}
+
+\textbf{Reward Model:} $\hat{R}(s_t, a_t)$
+\begin{itemize}
+    \item Predicts immediate reward
+    \item Often easier to learn than dynamics
+    \item May include uncertainty estimates
+\end{itemize}
+
+\textbf{Terminal State Model:} $\hat{T}(s_t, a_t)$
+\begin{itemize}
+    \item Predicts episode termination probability
+    \item Important for finite-horizon tasks
+    \item Affects return calculations in planning
+\end{itemize}
+
+\section{Learning Environment Models}
+
+\subsection{Maximum Likelihood Estimation}
+
+For parametric models $\hat{P}(s'|s,a; \theta)$, use maximum likelihood:
+
+\begin{equation}
+\theta^* = \arg\max_\theta \sum_{i=1}^N \log \hat{P}(s_i'|s_i, a_i; \theta)
+\end{equation}
+
+For neural network models:
+\begin{equation}
+L(\theta) = \frac{1}{N} \sum_{i=1}^N \|\hat{s}_i' - s_i'\|^2
+\end{equation}
+
+where $\hat{s}_i' = f(s_i, a_i; \theta)$ is the predicted next state.
+
+\subsection{Handling Stochasticity}
+
+\textbf{Gaussian Models:}
+\begin{equation}
+\hat{P}(s'|s,a; \theta) = \mathcal{N}(s'; \mu(s,a; \theta_\mu), \Sigma(s,a; \theta_\Sigma))
+\end{equation}
+
+\textbf{Mixture Models:}
+\begin{equation}
+\hat{P}(s'|s,a; \theta) = \sum_{k=1}^K \pi_k(s,a; \theta) \mathcal{N}(s'; \mu_k(s,a; \theta), \Sigma_k)
+\end{equation}
+
+\textbf{Normalizing Flows:}
+Learn complex distributions through invertible transformations:
+\begin{equation}
+s' = f_{\theta}(s, a, z), \quad z \sim \mathcal{N}(0, I)
+\end{equation}
+
+\subsection{Model Uncertainty}
+
+Quantifying model uncertainty is crucial for robust planning:
+
+\textbf{Epistemic Uncertainty:} Uncertainty due to limited data
+\begin{itemize}
+    \item Bayesian neural networks
+    \item Dropout-based uncertainty
+    \item Ensemble methods
+\end{itemize}
+
+\textbf{Aleatoric Uncertainty:} Inherent environment stochasticity
+\begin{itemize}
+    \item Learned variance parameters
+    \item Heteroscedastic models
+    \item Multi-modal predictions
+\end{itemize}
+
+\section{Planning with Learned Models}
+
+\subsection{Forward Search}
+
+\textbf{Breadth-First Planning:}
+\begin{algorithm}
+\caption{Model-Based Forward Search}
+\begin{algorithmic}
+\REQUIRE Learned model $\hat{P}, \hat{R}$, search depth $d$, branching factor $b$
+\STATE Initialize search tree with root state $s_0$
+\FOR{depth $= 1, d$}
+    \FOR{each leaf node $(s, \text{path})$ at depth $-1$}
+        \FOR{each action $a$ (sample $b$ actions)}
+            \STATE $s' \sim \hat{P}(\cdot|s, a)$
+            \STATE $r = \hat{R}(s, a)$
+            \STATE Add child node $(s', \text{path} + [(s,a,r)])$
+        \ENDFOR
+    \ENDFOR
+\ENDFOR
+\STATE Select best action from root using tree evaluation
+\end{algorithmic}
+\end{algorithm}
+
+\textbf{Monte Carlo Tree Search (MCTS):}
+Asymmetrically expand promising parts of the search tree:
+
+\begin{algorithm}
+\caption{MCTS with Learned Model}
+\begin{algorithmic}
+\REQUIRE Model $\hat{P}, \hat{R}$, simulation budget $N$
+\STATE Initialize tree with root state $s_0$
+\FOR{simulation $= 1, N$}
+    \STATE \textbf{Selection:} Traverse tree using UCB until leaf
+    \STATE \textbf{Expansion:} Add one child to the leaf
+    \STATE \textbf{Simulation:} Roll out from child using model and policy
+    \STATE \textbf{Backpropagation:} Update values along path to root
+\ENDFOR
+\STATE Return best action from root
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Model Predictive Control (MPC)}
+
+MPC optimizes over finite horizons and replans frequently:
+
+\begin{align}
+\mathbf{a}^* &= \arg\max_{\mathbf{a}_{0:H-1}} \sum_{t=0}^{H-1} \gamma^t \hat{R}(s_t, a_t) \\
+\text{s.t.} \quad s_{t+1} &= \hat{f}(s_t, a_t) \\
+s_0 &= s_{\text{current}}
+\end{align}
+
+Execute only $a_0^*$, then replan from the resulting state.
+
+\textbf{Cross-Entropy Method (CEM) for MPC:}
+\begin{algorithm}
+\caption{CEM for Model Predictive Control}
+\begin{algorithmic}
+\REQUIRE Model $\hat{f}, \hat{R}$, horizon $H$, population size $P$, elite fraction $f$
+\STATE Initialize action distribution $\pi_0 = \mathcal{N}(\mu_0, \Sigma_0)$
+\FOR{iteration $= 1, K$}
+    \STATE Sample $P$ action sequences from $\pi_{i-1}$
+    \STATE Evaluate each sequence using learned model
+    \STATE Select top $f \cdot P$ sequences (elites)
+    \STATE Fit new distribution $\pi_i$ to elite sequences
+\ENDFOR
+\STATE Return first action of best sequence
+\end{algorithmic}
+\end{algorithm}
+
+\section{Dyna-Q and Integrated Learning}
+
+\subsection{The Dyna Architecture}
+
+Dyna-Q integrates direct learning, planning, and acting:
+
+\begin{algorithm}
+\caption{Dyna-Q}
+\begin{algorithmic}
+\REQUIRE Planning steps $n$, learning rates $\alpha_Q, \alpha_M$
+\STATE Initialize Q-function $Q(s,a)$ and model $M(s,a)$
+\FOR{each step}
+    \STATE \textbf{Acting:} Select and execute action $a$ in state $s$
+    \STATE Observe result $r, s'$
+    
+    \STATE \textbf{Direct Learning:} $Q(s,a) \leftarrow Q(s,a) + \alpha_Q[r + \gamma \max_{a'} Q(s',a') - Q(s,a)]$
+    
+    \STATE \textbf{Model Learning:} $M(s,a) \leftarrow (r, s')$
+    
+    \STATE \textbf{Planning:} 
+    \FOR{$i = 1, n$}
+        \STATE Sample previously experienced $(s, a)$
+        \STATE $(r, s') \leftarrow M(s, a)$
+        \STATE $Q(s,a) \leftarrow Q(s,a) + \alpha_Q[r + \gamma \max_{a'} Q(s',a') - Q(s,a)]$
+    \ENDFOR
+\ENDFOR
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Prioritized Sweeping}
+
+Focus planning updates on states where model updates matter most:
+
+\begin{equation}
+\text{Priority}(s,a) = |r + \gamma \max_{a'} Q(s',a') - Q(s,a)|
+\end{equation}
+
+Maintain a priority queue of state-action pairs and update those with highest priorities first.
+
+\subsection{Dyna-Q+}
+
+Dyna-Q+ adds exploration bonuses for states not visited recently:
+
+\begin{equation}
+r^+ = r + \kappa \sqrt{\tau(s,a)}
+\end{equation}
+
+where $\tau(s,a)$ is the time since state-action pair $(s,a)$ was last visited.
+
+\section{Deep Model-Based RL}
+
+\subsection{World Models}
+
+Learn a compressed latent representation of the environment:
+
+\textbf{Variational Autoencoder (VAE):} Compress observations
+\begin{align}
+z_t &\sim \text{Encoder}(o_t) \\
+\hat{o}_t &\sim \text{Decoder}(z_t)
+\end{align}
+
+\textbf{Memory (RNN/LSTM):} Model temporal dynamics in latent space
+\begin{equation}
+z_{t+1} = \text{RNN}(z_t, a_t, h_t)
+\end{equation}
+
+\textbf{Controller:} Learn policy in latent space
+\begin{equation}
+a_t = \text{Controller}(z_t)
+\end{equation}
+
+\begin{algorithm}
+\caption{World Models Training}
+\begin{algorithmic}
+\STATE \textbf{Phase 1:} Train VAE on collected observations
+\STATE \textbf{Phase 2:} Train RNN to predict latent dynamics
+\STATE \textbf{Phase 3:} Train controller using evolution strategies in latent space
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Model-Based Value Expansion (MVE)}
+
+Combine model-based and model-free learning:
+
+\begin{equation}
+Q^{\text{MVE}}(s,a) = \hat{R}(s,a) + \gamma \sum_{s'} \hat{P}(s'|s,a) \max_{a'} Q(s',a')
+\end{equation}
+
+Use $k$-step model rollouts to reduce model errors:
+\begin{equation}
+V^{(k)}(s) = \max_a \left[ \hat{R}(s,a) + \gamma \sum_{s'} \hat{P}(s'|s,a) V^{(k-1)}(s') \right]
+\end{equation}
+
+\subsection{Model-Based Policy Optimization (MBPO)}
+
+Alternate between model learning and policy optimization:
+
+\begin{algorithm}
+\caption{Model-Based Policy Optimization}
+\begin{algorithmic}
+\REQUIRE Model $M_\phi$, policy $\pi_\theta$, real data $\mathcal{D}_{\text{env}}$
+\FOR{iteration $= 1, K$}
+    \STATE Train model $M_\phi$ on $\mathcal{D}_{\text{env}}$
+    \STATE Generate synthetic data $\mathcal{D}_{\text{model}}$ using $M_\phi$ and $\pi_\theta$
+    \STATE Train policy $\pi_\theta$ on mixture of $\mathcal{D}_{\text{env}}$ and $\mathcal{D}_{\text{model}}$
+    \STATE Collect new real data and add to $\mathcal{D}_{\text{env}}$
+\ENDFOR
+\end{algorithmic}
+\end{algorithm}
+
+\section{Uncertainty-Aware Planning}
+
+\subsection{Robust Planning}
+
+Account for model uncertainty in planning:
+
+\textbf{Worst-Case Planning:}
+\begin{equation}
+V^*(s) = \max_a \min_{P \in \mathcal{U}} \left[ R(s,a) + \gamma \sum_{s'} P(s'|s,a) V^*(s') \right]
+\end{equation}
+
+where $\mathcal{U}$ is the uncertainty set around the learned model.
+
+\textbf{Risk-Sensitive Planning:}
+\begin{equation}
+V^*(s) = \max_a \left[ R(s,a) + \gamma \sum_{s'} \hat{P}(s'|s,a) V^*(s') - \lambda \cdot \text{Var}(V^*(s')) \right]
+\end{equation}
+
+\subsection{Thompson Sampling for Models}
+
+Sample models from posterior distribution:
+
+\begin{algorithm}
+\caption{Thompson Sampling for Model-Based RL}
+\begin{algorithmic}
+\REQUIRE Model posterior $p(M|\mathcal{D})$
+\FOR{each episode}
+    \STATE Sample model $\tilde{M} \sim p(M|\mathcal{D})$
+    \STATE Plan using $\tilde{M}$ to get policy $\pi_{\tilde{M}}$
+    \STATE Execute $\pi_{\tilde{M}}$ in environment
+    \STATE Update model posterior with new data
+\ENDFOR
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Information Gain and Exploration}
+
+Plan to reduce model uncertainty:
+
+\begin{equation}
+a^* = \arg\max_a \left[ Q(s,a) + \lambda \cdot \text{IG}(s,a) \right]
+\end{equation}
+
+where $\text{IG}(s,a)$ is the expected information gain about the model.
+
+\section{AlphaZero and Game Tree Search}
+
+\subsection{AlphaZero Architecture}
+
+AlphaZero combines MCTS with deep neural networks:
+
+\textbf{Neural Network:} $f_\theta(s) = (p, v)$
+\begin{itemize}
+    \item $p$: Prior policy probabilities over actions
+    \item $v$: Value estimate for the current state
+\end{itemize}
+
+\textbf{MCTS Integration:}
+\begin{itemize}
+    \item Use neural network for leaf evaluation
+    \item No separate value network - single network outputs both
+    \item Self-play training generates data
+\end{itemize}
+
+\subsection{AlphaZero MCTS}
+
+\begin{algorithm}
+\caption{AlphaZero MCTS}
+\begin{algorithmic}
+\REQUIRE Neural network $f_\theta$, simulation count $N$
+\STATE Initialize search tree with root state $s_0$
+\FOR{simulation $= 1, N$}
+    \STATE \textbf{Selection:} Traverse tree using PUCT algorithm
+    \STATE \textbf{Expansion:} Add leaf node and get $(p, v) = f_\theta(s_{\text{leaf}})$
+    \STATE \textbf{Backup:} Update all nodes on path with value $v$
+\ENDFOR
+\STATE Return action probabilities proportional to visit counts
+\end{algorithm}
+
+\textbf{PUCT (Polynomial Upper Confidence Trees):}
+\begin{equation}
+a^* = \arg\max_a \left[ Q(s,a) + c \cdot p(a|s) \frac{\sqrt{\sum_b N(s,b)}}{1 + N(s,a)} \right]
+\end{equation}
+
+\subsection{Self-Play Training}
+
+\begin{algorithm}
+\caption{AlphaZero Self-Play Training}
+\begin{algorithmic}
+\REQUIRE Neural network $f_\theta$
+\FOR{iteration $= 1, K$}
+    \STATE \textbf{Self-Play:} Generate games using MCTS with $f_\theta$
+    \STATE Store training examples $(s, \pi, z)$ where:
+    \STATE \quad $s$: board position
+    \STATE \quad $\pi$: MCTS action probabilities  
+    \STATE \quad $z$: game outcome
+    \STATE \textbf{Training:} Update $f_\theta$ to minimize:
+    \STATE \quad $L = (v - z)^2 - \pi^T \log p + c \|\theta\|^2$
+\ENDFOR
+\end{algorithmic}
+\end{algorithm}
+
+\section{Model Ensembles and Uncertainty}
+
+\subsection{Deep Ensembles}
+
+Train multiple models to capture uncertainty:
+
+\begin{equation}
+\hat{P}_{\text{ensemble}}(s'|s,a) = \frac{1}{M} \sum_{i=1}^M \hat{P}_i(s'|s,a)
+\end{equation}
+
+\textbf{Ensemble Variance:}
+\begin{equation}
+\text{Var}(s'|s,a) = \frac{1}{M} \sum_{i=1}^M (\hat{s}'_i - \bar{s}')^2
+\end{equation}
+
+\subsection{Probabilistic Ensembles with Trajectory Sampling (PETS)}
+
+\begin{algorithm}
+\caption{PETS Algorithm}
+\begin{algorithmic}
+\REQUIRE Ensemble of models $\{M_i\}_{i=1}^E$, CEM parameters
+\FOR{each step}
+    \STATE Train ensemble on collected data
+    \STATE Use CEM to optimize action sequence:
+    \FOR{CEM iteration}
+        \STATE Sample action sequences from current distribution
+        \STATE For each sequence, sample model from ensemble
+        \STATE Evaluate sequence using sampled model
+        \STATE Update action distribution toward best sequences
+    \ENDFOR
+    \STATE Execute first action of best sequence
+\ENDFOR
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Trajectory Sampling Strategies}
+
+\textbf{TS1 (Trajectory Sampling 1):} Sample one model per trajectory
+\textbf{TSinf (Trajectory Sampling ∞):} Sample new model at each step
+\textbf{TS$k$:} Sample new model every $k$ steps
+
+Trade-off between computational efficiency and uncertainty propagation.
+
+\section{Hybrid Model-Free/Model-Based Methods}
+
+\subsection{Model-Based Acceleration}
+
+Use model-based rollouts to accelerate model-free learning:
+
+\begin{equation}
+Q^{\text{hybrid}}(s,a) = (1-\alpha) Q^{\text{MF}}(s,a) + \alpha Q^{\text{MB}}(s,a)
+\end{equation}
+
+\subsection{Imagination-Augmented Agents (I2A)}
+
+Augment model-free policies with model-based "imagination":
+
+\begin{itemize}
+    \item Roll out multiple action sequences using learned model
+    \item Encode rollout information with RNN
+    \item Combine with model-free features for final policy
+\end{itemize}
+
+\begin{equation}
+\pi(a|s) = f(s, \text{encode}(\text{rollouts}(s)))
+\end{equation}
+
+\subsection{Learning When to Trust the Model}
+
+\begin{equation}
+\lambda(s,a) = \sigma(\text{NN}(s,a, \text{uncertainty}(s,a)))
+\end{equation}
+
+Adaptive mixing weights based on model confidence.
+
+\section{Continuous Control Applications}
+
+\subsection{Robotics and Manipulation}
+
+\begin{examplebox}[Robot Arm Control]
+Learning to control a 7-DOF robot arm for object manipulation:
+\begin{itemize}
+    \item \textbf{Model}: Neural network predicting joint positions from torques
+    \item \textbf{Planning}: MPC with CEM optimization
+    \item \textbf{Benefits}: 10-100x sample efficiency compared to model-free
+    \item \textbf{Challenges}: Contact dynamics, modeling friction and impacts
+\end{itemize}
+
+Model-based approaches excel in robotics because physical intuition can guide model architecture design, and simulation-to-real transfer is often easier with explicit dynamics models.
+\end{examplebox}
+
+\subsection{Autonomous Vehicle Control}
+
+\begin{examplebox}[Vehicle Path Planning]
+Model-based control for autonomous navigation:
+\begin{itemize}
+    \item \textbf{Model}: Bicycle model with learned tire-road interaction
+    \item \textbf{Planning**: Receding horizon control with safety constraints
+    \item \textbf{Benefits**: Predictable behavior, safety guarantees
+    \item \textbf{Challenges**: Modeling other vehicles, weather conditions
+\end{itemize}
+\end{examplebox}
+
+\section{Challenges and Limitations}
+
+\subsection{Model Learning Challenges}
+
+\textbf{Compounding Errors:}
+\begin{itemize}
+    \item Small model errors compound over long horizons
+    \item Planning with inaccurate models can be worse than no planning
+    \item Need to detect when model is unreliable
+\end{itemize}
+
+\textbf{Distribution Shift:}
+\begin{itemize}
+    \item Models trained on past data may not generalize
+    \item Policy changes lead to new state distributions
+    \item Need active learning and domain adaptation
+\end{itemize}
+
+\textbf{Partial Observability:}
+\begin{itemize}
+    \item Hidden state makes model learning harder
+    \item Need to model belief states or use recurrent models
+    \item Uncertainty estimates become more important
+\end{itemize}
+
+\subsection{Planning Challenges}
+
+\textbf{Computational Complexity:}
+\begin{itemize}
+    \item Exponential growth in search space
+    \item Real-time constraints in many applications
+    \item Need efficient approximation methods
+\end{itemize}
+
+\textbf{Exploration vs Exploitation:}
+\begin{itemize}
+    \item How to balance model improvement vs reward maximization
+    \item Need exploration strategies that improve models
+    \item Information gain versus immediate reward
+\end{itemize}
+
+\section{Recent Advances}
+
+\subsection{Latent Space Models}
+
+Learn dynamics in learned latent representations:
+
+\textbf{Dreamer:}
+\begin{itemize}
+    \item World model in latent space
+    \item Actor-critic learning in imagination
+    \item Recurrent state space models
+\end{itemize}
+
+\textbf{PlaNet:}
+\begin{itemize}
+    \item Deep planning networks
+    \item Deterministic and stochastic latent dynamics
+    \item Cross-entropy method for planning
+\end{itemize}
+
+\subsection{Model-Predictive Policy Gradients}
+
+Combine gradients through learned models with standard policy gradients:
+
+\begin{equation}
+\nabla_\theta J = \mathbb{E} \left[ \nabla_\theta \sum_{t=0}^H \gamma^t \hat{R}(s_t, a_t) \bigg| a_t = \pi_\theta(s_t) \right]
+\end{equation}
+
+where states $s_t$ are computed using learned dynamics.
+
+\section{Implementation Considerations}
+
+\subsection{Model Architecture Design}
+
+\textbf{Inductive Biases:}
+\begin{itemize}
+    \item Physics-informed architectures
+    \item Conservation laws and symmetries
+    \item Multi-step prediction training
+\end{itemize}
+
+\textbf{Uncertainty Quantification:}
+\begin{itemize}
+    \item Ensemble methods vs Bayesian approaches
+    \item Calibration of uncertainty estimates
+    \item Computational overhead considerations
+\end{itemize}
+
+\subsection{Training Procedures}
+
+\textbf{Data Collection:}
+\begin{itemize}
+    \item Exploration strategies for model learning
+    \item Online vs offline model training
+    \item Handling distribution shift
+\end{itemize}
+
+\textbf{Model Validation:}
+\begin{itemize}
+    \item Hold-out validation sets
+    \item Multi-step prediction accuracy
+    \item Domain-specific evaluation metrics
+\end{itemize}
+
+\section{Chapter Summary}
+
+Model-based reinforcement learning leverages learned environment models to dramatically improve sample efficiency and enable sophisticated planning:
+
+\begin{itemize}
+    \item \textbf{Sample efficiency**: Models enable learning from simulated experience
+    \item \textbf{Planning capability**: Forward search and optimization in learned models
+    \item \textbf{Interpretability**: Explicit models provide insights into environment dynamics
+    \item \textbf{Safety**: Ability to test policies before real execution
+\end{itemize}
+
+Key approaches and algorithms:
+\begin{itemize}
+    \item \textbf{Classical methods**: Dyna-Q, prioritized sweeping, forward search
+    \item \textbf{Deep learning**: World models, PETS, model-based policy optimization
+    \item \textbf{Game playing**: AlphaZero and MCTS with neural networks
+    \item \textbf{Hybrid methods**: Combining model-based and model-free approaches
+    \item \textbf{Uncertainty**: Ensemble methods and robust planning
+\end{itemize}
+
+Applications include robotics, control systems, game playing, and any domain where sample efficiency is crucial. The field continues advancing with better uncertainty quantification, latent space models, and hybrid approaches.
+
+\begin{keyideabox}[Key Takeaways]
+\begin{enumerate}
+    \item Model-based RL can achieve dramatic sample efficiency improvements
+    \item Learned models enable sophisticated planning and optimization
+    \item Model uncertainty must be carefully quantified and handled
+    \item Hybrid approaches often outperform pure model-based or model-free methods
+    \item Success depends critically on model quality and planning algorithms
+\end{enumerate}
+\end{keyideabox}
+
+The next chapter will explore the fundamental exploration-exploitation tradeoff and advanced strategies for efficient exploration in complex environments.

@@ -1,4 +1,383 @@
-\chapter{Chapter 07 Title}
-\label{ch:chapter07}
+\chapter{Linear Function Approximation}
+\label{ch:linear-function-approximation}
 
-This chapter will cover...
+\begin{keyideabox}[Chapter Overview]
+This chapter introduces function approximation to reinforcement learning, focusing on linear methods that enable learning in large or continuous state spaces. We develop the mathematical theory of gradient-based updates, convergence guarantees, and the deadly triad of function approximation. The treatment emphasizes both theoretical understanding and practical implementation considerations.
+\end{keyideabox}
+
+\begin{intuitionbox}[Why Function Approximation?]
+Imagine trying to store a separate value for every possible configuration of a chess board (about $10^{120}$ states) or every possible sensor reading from a robot ($\mathbb{R}^n$ continuous space). Tabular methods become impossible. Function approximation allows us to generalize from limited experience to the vast space of possible states by learning a parameterized function.
+\end{intuitionbox}
+
+\section{The Need for Generalization}
+
+\subsection{Limitations of Tabular Methods}
+
+In tabular reinforcement learning, we maintain explicit tables $V(s)$ or $Q(s,a)$ for each state or state-action pair. This approach faces fundamental limitations:
+
+\begin{enumerate}
+\item \textbf{Memory Requirements}: $O(|\mathcal{S}|)$ for value functions, $O(|\mathcal{S}| \times |\mathcal{A}|)$ for action-value functions
+\item \textbf{Learning Speed}: Each state must be visited multiple times
+\item \textbf{Continuous Spaces}: Infinite state spaces cannot be handled
+\item \textbf{Generalization}: No sharing of information between similar states
+\end{enumerate}
+
+\subsection{Function Approximation Framework}
+
+We approximate the value function with a parameterized function:
+\begin{equation}
+\hat{V}(s; \theta) \approx V^\pi(s)
+\end{equation}
+or for action-values:
+\begin{equation}
+\hat{Q}(s,a; \theta) \approx Q^\pi(s,a)
+\end{equation}
+
+where $\theta \in \mathbb{R}^d$ is a parameter vector with $d \ll |\mathcal{S}|$.
+
+\section{Linear Function Approximation}
+
+\subsection{Feature Representation}
+
+In linear function approximation, we represent states using feature vectors:
+\begin{equation}
+\hat{V}(s; \theta) = \theta^T \phi(s) = \sum_{i=1}^d \theta_i \phi_i(s)
+\end{equation}
+
+where $\phi(s) = [\phi_1(s), \phi_2(s), \ldots, \phi_d(s)]^T \in \mathbb{R}^d$ is the feature vector.
+
+\begin{examplebox}[Feature Engineering Examples]
+\textbf{GridWorld Features:}
+\begin{itemize}
+\item Position coordinates: $\phi_1(s) = x$, $\phi_2(s) = y$
+\item Distance to goal: $\phi_3(s) = \|s - s_{\text{goal}}\|$
+\item Indicator features: $\phi_i(s) = \mathbf{1}[s = s_i]$ (one-hot encoding)
+\end{itemize}
+
+\textbf{CartPole Features:}
+\begin{itemize}
+\item State variables: $\phi_1(s) = \text{position}$, $\phi_2(s) = \text{velocity}$
+\item Polynomial features: $\phi_3(s) = \text{position}^2$, $\phi_4(s) = \text{position} \times \text{velocity}$
+\end{itemize}
+\end{examplebox}
+
+\subsection{Linear Action-Value Approximation}
+
+For control problems, we approximate action-value functions:
+\begin{equation}
+\hat{Q}(s,a; \theta) = \theta^T \phi(s,a)
+\end{equation}
+
+where $\phi(s,a)$ can be constructed as:
+\begin{itemize}
+\item \textbf{Separate features}: $\phi(s,a) = [\phi^{(1)}(s,a), \phi^{(2)}(s,a), \ldots]^T$
+\item \textbf{State-action concatenation}: $\phi(s,a) = [\phi_s(s), \phi_a(a)]^T$
+\item \textbf{Tile coding}: Discretize continuous spaces with overlapping tiles
+\end{itemize}
+
+\section{Gradient-Based Learning}
+
+\subsection{Value Function Approximation with Gradient Descent}
+
+We minimize the mean squared error between our approximation and target values:
+\begin{equation}
+J(\theta) = \mathbb{E}_{\mu} \left[ \left( V^\pi(s) - \hat{V}(s; \theta) \right)^2 \right]
+\end{equation}
+
+where $\mu$ is a state distribution.
+
+The gradient descent update is:
+\begin{equation}
+\theta_{t+1} = \theta_t - \frac{1}{2} \alpha \nabla_\theta J(\theta_t)
+\end{equation}
+
+For linear approximation:
+\begin{equation}
+\nabla_\theta \hat{V}(s; \theta) = \phi(s)
+\end{equation}
+
+\subsection{Stochastic Gradient Descent}
+
+Since we don't know $V^\pi(s)$, we use sample-based updates. For a sample $(S_t, V_t)$ where $V_t$ is our target:
+\begin{equation}
+\theta_{t+1} = \theta_t + \alpha \left[ V_t - \hat{V}(S_t; \theta_t) \right] \phi(S_t)
+\end{equation}
+
+\begin{algorithm}
+\caption{Gradient Monte Carlo for Value Approximation}
+\begin{algorithmic}
+\REQUIRE Differentiable function $\hat{V}(s; \theta)$, policy $\pi$
+\STATE Initialize $\theta$ arbitrarily
+\REPEAT
+    \STATE Generate an episode $S_0, A_0, R_1, S_1, A_1, R_2, \ldots, S_{T-1}, A_{T-1}, R_T$ following $\pi$
+    \FOR{$t = 0, 1, \ldots, T-1$}
+        \STATE $G_t \leftarrow$ return from time $t$
+        \STATE $\theta \leftarrow \theta + \alpha [G_t - \hat{V}(S_t; \theta)] \nabla_\theta \hat{V}(S_t; \theta)$
+    \ENDFOR
+\UNTIL{convergence}
+\end{algorithmic}
+\end{algorithm}
+
+\section{Temporal Difference with Function Approximation}
+
+\subsection{Semi-Gradient TD(0)}
+
+For temporal difference learning, we use the current estimate of the successor state as the target:
+\begin{equation}
+\theta_{t+1} = \theta_t + \alpha \left[ R_{t+1} + \gamma \hat{V}(S_{t+1}; \theta_t) - \hat{V}(S_t; \theta_t) \right] \phi(S_t)
+\end{equation}
+
+This is called "semi-gradient" because we don't take the gradient with respect to $\theta$ in the target $R_{t+1} + \gamma \hat{V}(S_{t+1}; \theta_t)$.
+
+\begin{algorithm}
+\caption{Semi-gradient TD(0) for Value Approximation}
+\begin{algorithmic}
+\REQUIRE Differentiable function $\hat{V}(s; \theta)$, policy $\pi$
+\STATE Initialize $\theta$ arbitrarily
+\REPEAT
+    \STATE Initialize $S$
+    \REPEAT
+        \STATE $A \leftarrow$ action given by $\pi$ for $S$
+        \STATE Take action $A$, observe $R, S'$
+        \STATE $\theta \leftarrow \theta + \alpha [R + \gamma \hat{V}(S'; \theta) - \hat{V}(S; \theta)] \nabla_\theta \hat{V}(S; \theta)$
+        \STATE $S \leftarrow S'$
+    \UNTIL{$S$ is terminal}
+\UNTIL{convergence}
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Q-Learning with Function Approximation}
+
+For action-value approximation:
+\begin{equation}
+\theta_{t+1} = \theta_t + \alpha \left[ R_{t+1} + \gamma \max_a \hat{Q}(S_{t+1}, a; \theta_t) - \hat{Q}(S_t, A_t; \theta_t) \right] \nabla_\theta \hat{Q}(S_t, A_t; \theta_t)
+\end{equation}
+
+\section{Convergence Analysis}
+
+\subsection{The Projection Matrix}
+
+For linear function approximation, define the projection matrix:
+\begin{equation}
+\mathbf{P} = \mathbf{\Phi}(\mathbf{\Phi}^T \mathbf{D} \mathbf{\Phi})^{-1} \mathbf{\Phi}^T \mathbf{D}
+\end{equation}
+
+where $\mathbf{\Phi}$ is the $|\mathcal{S}| \times d$ feature matrix and $\mathbf{D}$ is a diagonal matrix of state visitation probabilities.
+
+\subsection{Fixed Point Analysis}
+
+\begin{theorem}[Convergence of Linear TD(0)]
+For linear function approximation with features $\phi(s)$, semi-gradient TD(0) converges to the fixed point:
+\begin{equation}
+\theta_{TD} = (\mathbf{\Phi}^T \mathbf{D} \mathbf{\Phi})^{-1} \mathbf{\Phi}^T \mathbf{D} V^\pi
+\end{equation}
+This represents the best linear approximation to $V^\pi$ in the weighted $L_2$ norm with weights given by the state distribution.
+\end{theorem}
+
+\begin{proof}
+The TD update can be written as:
+\begin{equation}
+\theta_{t+1} = \theta_t + \alpha (\mathbf{R} + \gamma \mathbf{P} \mathbf{\Phi} \theta_t - \mathbf{\Phi} \theta_t)^T \mathbf{D} \mathbf{\Phi}
+\end{equation}
+
+At the fixed point: $\mathbf{\Phi} \theta_{TD} = \mathbf{P}(\mathbf{R} + \gamma \mathbf{P} \mathbf{\Phi} \theta_{TD})$
+
+Solving for $\theta_{TD}$ yields the stated result.
+\end{proof}
+
+\subsection{Mean Squared Error Bound}
+
+\begin{theorem}[TD Error Bound]
+The steady-state error of linear TD(0) satisfies:
+\begin{equation}
+\|\hat{V} - V^\pi\|_\mu^2 \leq \frac{1}{1-\gamma^2} \min_\theta \|V^\pi - \mathbf{\Phi}\theta\|_\mu^2
+\end{equation}
+where $\|\cdot\|_\mu$ is the weighted $L_2$ norm under distribution $\mu$.
+\end{theorem}
+
+\section{The Deadly Triad}
+
+\subsection{Instability in Function Approximation}
+
+The combination of three factors can lead to instability:
+
+\begin{enumerate}
+\item \textbf{Function approximation}: Using parameterized functions instead of tables
+\item \textbf{Bootstrapping}: Using current estimates to update current estimates (as in TD learning)
+\item \textbf{Off-policy learning}: Learning about a different policy than the one generating data
+\end{enumerate}
+
+\begin{examplebox}[Baird's Counterexample]
+Baird (1995) constructed a simple MDP where off-policy TD learning with linear function approximation diverges:
+
+States: $\{s_1, s_2, \ldots, s_7\}$ with terminal state $s_7$
+Features: $\phi(s_i) = [2\mathbf{1}[i \leq 6], \mathbf{1}[i = 1], \ldots, \mathbf{1}[i = 6]]^T$ for $i = 1, \ldots, 6$
+Behavior policy: Uniform random among available actions
+Target policy: Always take "dashed" action leading to $s_7$
+
+Despite having a unique solution to the projected Bellman equation, the semi-gradient algorithm diverges.
+\end{examplebox}
+
+\subsection{Gradient-TD Methods}
+
+To address instability, gradient-TD methods perform true gradient descent on the mean squared projected Bellman error:
+
+\begin{equation}
+\text{MSPBE}(\theta) = \|\Pi T^\pi \hat{V}_\theta - \hat{V}_\theta\|_\mu^2
+\end{equation}
+
+The gradient-TD update is:
+\begin{equation}
+\theta_{t+1} = \theta_t + \alpha (\delta_t \phi_t - \gamma \phi_{t+1} \phi_t^T w_t)
+\end{equation}
+where $w_t$ is an auxiliary parameter vector.
+
+\section{Least-Squares Methods}
+
+\subsection{Least-Squares Temporal Difference (LSTD)}
+
+LSTD computes the TD fixed point directly by solving:
+\begin{equation}
+\mathbf{A} \theta = \mathbf{b}
+\end{equation}
+
+where:
+\begin{align}
+\mathbf{A} &= \sum_{t=1}^T \phi(S_t) (\phi(S_t) - \gamma \phi(S_{t+1}))^T \\
+\mathbf{b} &= \sum_{t=1}^T \phi(S_t) R_{t+1}
+\end{align}
+
+\begin{algorithm}
+\caption{LSTD for Value Approximation}
+\begin{algorithmic}
+\REQUIRE Features $\phi(s)$, policy $\pi$, regularization $\epsilon > 0$
+\STATE Initialize $\mathbf{A} = \epsilon \mathbf{I}$, $\mathbf{b} = \mathbf{0}$
+\REPEAT
+    \STATE Collect episode following $\pi$
+    \FOR{each transition $(S_t, R_{t+1}, S_{t+1})$}
+        \STATE $\mathbf{A} \leftarrow \mathbf{A} + \phi(S_t)(\phi(S_t) - \gamma \phi(S_{t+1}))^T$
+        \STATE $\mathbf{b} \leftarrow \mathbf{b} + \phi(S_t) R_{t+1}$
+    \ENDFOR
+    \STATE $\theta \leftarrow \mathbf{A}^{-1} \mathbf{b}$
+\UNTIL{convergence}
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Recursive Least-Squares Implementation}
+
+To avoid matrix inversion, use the Sherman-Morrison formula:
+\begin{equation}
+\mathbf{A}_{t+1}^{-1} = \mathbf{A}_t^{-1} - \frac{\mathbf{A}_t^{-1} \phi_t \phi_t^T \mathbf{A}_t^{-1}}{1 + \phi_t^T \mathbf{A}_t^{-1} \phi_t}
+\end{equation}
+
+\section{Feature Construction}
+
+\subsection{Tile Coding}
+
+Tile coding provides a way to discretize continuous spaces with overlapping receptive fields:
+
+\begin{itemize}
+\item Divide the state space into multiple overlapping grids (tilings)
+\item For state $s$, activate one tile from each tiling
+\item Feature vector has one 1 for each active tile, 0 elsewhere
+\end{itemize}
+
+\begin{examplebox}[Tile Coding for Mountain Car]
+For Mountain Car with position $p \in [-1.2, 0.6]$ and velocity $v \in [-0.07, 0.07]$:
+\begin{itemize}
+\item Create 8 tilings, each $8 \times 8$ grid
+\item Offset each tiling by $(i \cdot 0.225/8, i \cdot 0.01575/8)$ for tiling $i$
+\item Total features: $8 \times 8 \times 8 = 512$
+\item Active features per state: 8 (one per tiling)
+\end{itemize}
+\end{examplebox}
+
+\subsection{Radial Basis Functions}
+
+RBFs use Gaussian-like functions centered at prototypes:
+\begin{equation}
+\phi_i(s) = \exp\left(-\frac{\|s - c_i\|^2}{2\sigma_i^2}\right)
+\end{equation}
+
+where $c_i$ are prototype locations and $\sigma_i$ are width parameters.
+
+\subsection{Fourier Basis}
+
+For states $s \in [0,1]^n$, Fourier features are:
+\begin{equation}
+\phi_i(s) = \cos(\pi c_i^T s)
+\end{equation}
+
+where $c_i$ are integer vectors determining the frequency and phase.
+
+\section{Policy Gradient with Linear Approximation}
+
+\subsection{Linear Policy Approximation}
+
+For discrete actions, use softmax policy:
+\begin{equation}
+\pi(a|s; \theta) = \frac{e^{\theta^T \phi(s,a)}}{\sum_{a'} e^{\theta^T \phi(s,a')}}
+\end{equation}
+
+For continuous actions, use Gaussian policy:
+\begin{equation}
+\pi(a|s; \theta) = \frac{1}{\sqrt{2\pi\sigma^2}} \exp\left(-\frac{(a - \theta^T \phi(s))^2}{2\sigma^2}\right)
+\end{equation}
+
+\subsection{REINFORCE with Linear Features}
+
+The policy gradient for linear policies has a simple form:
+\begin{equation}
+\nabla_\theta J(\theta) = \mathbb{E}_\pi \left[ G_t \nabla_\theta \log \pi(A_t|S_t; \theta) \right]
+\end{equation}
+
+For the softmax policy:
+\begin{equation}
+\nabla_\theta \log \pi(a|s; \theta) = \phi(s,a) - \sum_{a'} \pi(a'|s; \theta) \phi(s,a')
+\end{equation}
+
+\section{Practical Considerations}
+
+\subsection{Feature Scaling and Normalization}
+
+\begin{notebox}[Feature Engineering Guidelines]
+\begin{enumerate}
+\item \textbf{Normalization}: Scale features to similar ranges (e.g., $[0,1]$ or $[-1,1]$)
+\item \textbf{Standardization}: Zero mean, unit variance for each feature
+\item \textbf{Avoid redundancy}: Remove linearly dependent features
+\item \textbf{Incremental features}: Add polynomial or interaction terms carefully
+\end{enumerate}
+\end{notebox}
+
+\subsection{Regularization Techniques}
+
+To prevent overfitting:
+\begin{itemize}
+\item \textbf{L2 regularization}: Add $\lambda \|\theta\|^2$ to the objective
+\item \textbf{L1 regularization}: Add $\lambda \|\theta\|_1$ for sparsity
+\item \textbf{Early stopping}: Monitor validation performance
+\item \textbf{Feature selection}: Use domain knowledge or automated methods
+\end{itemize}
+
+\section{Chapter Summary}
+
+Linear function approximation provides the foundation for learning in large state spaces:
+
+\begin{itemize}
+\item \textbf{Representation}: Linear combination of hand-crafted features
+\item \textbf{Learning}: Gradient-based updates with convergence guarantees
+\item \textbf{Challenges}: The deadly triad can cause instability
+\item \textbf{Solutions}: Gradient-TD methods and least-squares approaches
+\end{itemize}
+
+The principles developed here extend naturally to neural networks, which we examine in the next chapter.
+
+\begin{keyideabox}[Key Takeaways]
+\begin{enumerate}
+\item Function approximation enables generalization across similar states
+\item Linear methods provide strong theoretical guarantees and interpretability
+\item Feature engineering is crucial for performance in linear methods
+\item The deadly triad poses fundamental challenges that require careful algorithm design
+\item Gradient-based methods form the foundation for modern deep RL
+\end{enumerate}
+\end{keyideabox}

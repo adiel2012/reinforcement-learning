@@ -1,4 +1,306 @@
-\chapter{Chapter 06 Title}
-\label{ch:chapter06}
+\chapter{Q-Learning and SARSA Extensions}
+\label{ch:q-learning-extensions}
 
-This chapter will cover...
+\begin{keyideabox}[Chapter Overview]
+This chapter extends our understanding of temporal difference control by exploring advanced variations of Q-learning and SARSA. We examine multi-step methods, eligibility traces, and theoretical convergence guarantees for off-policy learning. The mathematical analysis includes detailed proofs of convergence conditions and performance bounds.
+\end{keyideabox}
+
+\begin{intuitionbox}[From Basic TD to Advanced Control]
+While Chapter 5 introduced the fundamental concepts of TD learning, real-world applications require more sophisticated approaches. Think of basic Q-learning as learning to drive on a simple track - it works, but for complex scenarios like city driving, you need advanced techniques that can handle delayed rewards, partial observability, and efficient exploration.
+\end{intuitionbox}
+
+\section{Multi-Step Q-Learning}
+
+\subsection{n-Step Q-Learning}
+
+The basic Q-learning update uses only the immediate next reward and state. Multi-step methods extend this by looking ahead multiple steps:
+
+\begin{equation}
+Q_{t+n}(S_t, A_t) = Q_t(S_t, A_t) + \alpha_t \left[ G_{t:t+n} - Q_t(S_t, A_t) \right]
+\end{equation}
+
+where the n-step return is defined as:
+\begin{equation}
+G_{t:t+n} = R_{t+1} + \gamma R_{t+2} + \cdots + \gamma^{n-1} R_{t+n} + \gamma^n \max_a Q_t(S_{t+n}, a)
+\end{equation}
+
+\begin{algorithm}
+\caption{n-Step Q-Learning}
+\begin{algorithmic}
+\REQUIRE Step size $\alpha \in (0,1]$, small $\epsilon > 0$, positive integer $n$
+\STATE Initialize $Q(s,a)$ arbitrarily for all $s \in \mathcal{S}, a \in \mathcal{A}(s)$, except $Q(\text{terminal}, \cdot) = 0$
+\STATE Initialize and store $S_0$, select and store an action $A_0 \sim \pi(\cdot|S_0)$
+\FOR{$t = 0, 1, 2, \ldots$}
+    \IF{$t < T$}
+        \STATE Take action $A_t$, observe and store the next reward as $R_{t+1}$ and the next state as $S_{t+1}$
+        \IF{$S_{t+1}$ is terminal}
+            \STATE $T \leftarrow t + 1$
+        \ELSE
+            \STATE Select and store $A_{t+1} \sim \pi(\cdot|S_{t+1})$
+        \ENDIF
+    \ENDIF
+    \STATE $\tau \leftarrow t - n + 1$ (the time whose state's estimate is being updated)
+    \IF{$\tau \geq 0$}
+        \STATE $G \leftarrow \sum_{i=\tau+1}^{\min(\tau+n, T)} \gamma^{i-\tau-1} R_i$
+        \IF{$\tau + n < T$}
+            \STATE $G \leftarrow G + \gamma^n \max_a Q(S_{\tau+n}, a)$
+        \ENDIF
+        \STATE $Q(S_\tau, A_\tau) \leftarrow Q(S_\tau, A_\tau) + \alpha [G - Q(S_\tau, A_\tau)]$
+    \ENDIF
+\ENDFOR
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Theoretical Analysis of n-Step Methods}
+
+\begin{theorem}[n-Step Q-Learning Convergence]
+Under standard conditions (bounded rewards, decreasing step size satisfying $\sum_t \alpha_t = \infty$ and $\sum_t \alpha_t^2 < \infty$, and sufficient exploration), n-step Q-learning converges to the optimal action-value function $Q^*$ with probability 1.
+\end{theorem}
+
+\begin{proof}
+The proof follows by showing that the n-step return is an unbiased estimate of the optimal value under the greedy policy, then applying the stochastic approximation convergence theorem.
+
+Let $\pi_t$ be the greedy policy with respect to $Q_t$. The n-step return can be written as:
+\begin{align}
+G_{t:t+n} &= \expect_{\pi_t}[R_{t+1} + \gamma R_{t+2} + \cdots + \gamma^{n-1} R_{t+n}] \\
+&\quad + \gamma^n \max_a Q_t(S_{t+n}, a) + \text{martingale terms}
+\end{align}
+
+As $Q_t \to Q^*$, the bias in this estimate vanishes, ensuring convergence.
+\end{proof}
+
+\section{Q($\lambda$) Learning}
+
+\subsection{Eligibility Traces for Q-Learning}
+
+Eligibility traces provide an efficient way to update all state-action pairs based on their recency and frequency of visitation:
+
+\begin{equation}
+e_t(s,a) = \begin{cases}
+\gamma \lambda e_{t-1}(s,a) + 1 & \text{if } s = S_t \text{ and } a = A_t \\
+\gamma \lambda e_{t-1}(s,a) & \text{otherwise}
+\end{cases}
+\end{equation}
+
+The Q($\lambda$) update is then:
+\begin{equation}
+Q_{t+1}(s,a) = Q_t(s,a) + \alpha_t \delta_t e_t(s,a)
+\end{equation}
+
+where $\delta_t = R_{t+1} + \gamma \max_{a'} Q_t(S_{t+1}, a') - Q_t(S_t, A_t)$.
+
+\begin{examplebox}[Watkins' Q($\lambda$) vs. Naive Q($\lambda$)]
+There are two main variants of Q($\lambda$):
+
+\textbf{Watkins' Q($\lambda$):} Resets eligibility traces when a non-greedy action is taken.
+\textbf{Naive Q($\lambda$):} Does not reset traces, leading to off-policy issues.
+
+Watkins' version maintains the off-policy nature of Q-learning while benefiting from eligibility traces.
+\end{examplebox}
+
+\section{SARSA($\lambda$) and True Online Methods}
+
+\subsection{SARSA($\lambda$) Algorithm}
+
+SARSA($\lambda$) combines the on-policy nature of SARSA with eligibility traces:
+
+\begin{algorithm}
+\caption{SARSA($\lambda$)}
+\begin{algorithmic}
+\REQUIRE Step size $\alpha \in (0,1]$, trace-decay $\lambda \in [0,1]$, small $\epsilon > 0$
+\STATE Initialize $Q(s,a)$ arbitrarily and $e(s,a) = 0$ for all $s, a$
+\REPEAT
+    \STATE Initialize $S$, choose $A$ from $S$ using policy derived from $Q$ (e.g., $\epsilon$-greedy)
+    \REPEAT
+        \STATE Take action $A$, observe $R, S'$
+        \STATE Choose $A'$ from $S'$ using policy derived from $Q$
+        \STATE $\delta \leftarrow R + \gamma Q(S', A') - Q(S, A)$
+        \STATE $e(S, A) \leftarrow e(S, A) + 1$
+        \FOR{all $s, a$}
+            \STATE $Q(s, a) \leftarrow Q(s, a) + \alpha \delta e(s, a)$
+            \STATE $e(s, a) \leftarrow \gamma \lambda e(s, a)$
+        \ENDFOR
+        \STATE $S \leftarrow S'$; $A \leftarrow A'$
+    \UNTIL{$S$ is terminal}
+\UNTIL{convergence}
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{True Online SARSA($\lambda$)}
+
+The true online version provides exact equivalence to the forward view:
+
+\begin{equation}
+Q_{t+1}(s,a) = Q_t(s,a) + \alpha_t \delta_t^s e_t(s,a) + \alpha_t (Q_t(s,a) - Q_{t-1}(s,a))(e_t(s,a) - \mathbf{1}_{s,a}(S_t, A_t))
+\end{equation}
+
+where $\mathbf{1}_{s,a}(S_t, A_t)$ is the indicator function.
+
+\section{Double Q-Learning}
+
+\subsection{The Maximization Bias Problem}
+
+Standard Q-learning suffers from maximization bias due to using the same values for both action selection and evaluation:
+
+\begin{intuitionbox}[Understanding Maximization Bias]
+Imagine you're estimating the value of different investments, but your estimates are noisy. When you always pick the investment with the highest estimated value, you're likely to pick one whose value you've overestimated. This systematic error is maximization bias.
+\end{intuitionbox}
+
+\subsection{Double Q-Learning Algorithm}
+
+Double Q-learning maintains two independent value functions $Q^A$ and $Q^B$:
+
+\begin{algorithm}
+\caption{Double Q-Learning}
+\begin{algorithmic}
+\REQUIRE Step sizes $\alpha^A, \alpha^B \in (0,1]$, small $\epsilon > 0$
+\STATE Initialize $Q^A(s,a)$ and $Q^B(s,a)$ arbitrarily for all $s \in \mathcal{S}, a \in \mathcal{A}(s)$
+\REPEAT
+    \STATE Initialize $S$
+    \REPEAT
+        \STATE Choose $A$ from $S$ using policy derived from $Q^A + Q^B$ (e.g., $\epsilon$-greedy)
+        \STATE Take action $A$, observe $R, S'$
+        \STATE With probability 0.5:
+        \begin{ALC@g}
+            \STATE $A^* \leftarrow \arg\max_a Q^A(S', a)$
+            \STATE $Q^A(S, A) \leftarrow Q^A(S, A) + \alpha^A [R + \gamma Q^B(S', A^*) - Q^A(S, A)]$
+        \end{ALC@g}
+        \STATE else:
+        \begin{ALC@g}
+            \STATE $A^* \leftarrow \arg\max_a Q^B(S', a)$
+            \STATE $Q^B(S, A) \leftarrow Q^B(S, A) + \alpha^B [R + \gamma Q^A(S', A^*) - Q^B(S, A)]$
+        \end{ALC@g}
+        \STATE $S \leftarrow S'$
+    \UNTIL{$S$ is terminal}
+\UNTIL{convergence}
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Bias Reduction Analysis}
+
+\begin{theorem}[Double Q-Learning Bias Reduction]
+Let $Q^*(s,a)$ be the true optimal value, and let $\hat{Q}^A(s,a)$ and $\hat{Q}^B(s,a)$ be independent unbiased estimators. Then:
+\begin{equation}
+\expect[\hat{Q}^B(s, \arg\max_a \hat{Q}^A(s,a))] \leq \expect[\max_a \hat{Q}^A(s,a)]
+\end{equation}
+with equality only when the estimates are deterministic.
+\end{theorem}
+
+\section{Expected SARSA}
+
+\subsection{Algorithm and Convergence}
+
+Expected SARSA modifies the SARSA update to use the expected value under the current policy:
+
+\begin{equation}
+Q(S_t, A_t) \leftarrow Q(S_t, A_t) + \alpha \left[ R_{t+1} + \gamma \sum_a \pi(a|S_{t+1}) Q(S_{t+1}, a) - Q(S_t, A_t) \right]
+\end{equation}
+
+\begin{remarkbox}[Expected SARSA vs. Q-Learning]
+Expected SARSA can be viewed as a generalization of both SARSA and Q-learning:
+\begin{itemize}
+\item When $\pi$ is greedy: Expected SARSA = Q-learning
+\item When $\pi$ is the behavior policy: Expected SARSA = SARSA
+\end{itemize}
+\end{remarkbox}
+
+\section{Performance Analysis and Comparison}
+
+\subsection{Sample Complexity Bounds}
+
+\begin{theorem}[Sample Complexity of Q-Learning with Function Approximation]
+For Q-learning with linear function approximation in finite MDPs, the sample complexity to achieve $\epsilon$-optimal policy is:
+\begin{equation}
+\tilde{O}\left( \frac{d^2 S A}{(1-\gamma)^4 \epsilon^2} \right)
+\end{equation}
+where $d$ is the feature dimension.
+\end{theorem}
+
+\subsection{Empirical Comparison Framework}
+
+\begin{examplebox}[Experimental Setup for Algorithm Comparison]
+Standard benchmarks for comparing TD control algorithms:
+\begin{enumerate}
+\item \textbf{Tabular domains}: GridWorld, CliffWalking, Taxi
+\item \textbf{Function approximation}: Mountain Car, CartPole
+\item \textbf{Metrics}: 
+   \begin{itemize}
+   \item Learning curves (reward vs. episodes)
+   \item Sample efficiency (episodes to threshold)
+   \item Asymptotic performance
+   \item Computational cost per update
+   \end{itemize}
+\end{enumerate}
+\end{examplebox}
+
+\section{Advanced Topics}
+
+\subsection{Gradient Q-Learning}
+
+For continuous action spaces, we can use gradient methods:
+
+\begin{equation}
+\theta_{t+1} = \theta_t + \alpha_t \delta_t \nabla_\theta Q(S_t, A_t; \theta_t)
+\end{equation}
+
+where $\delta_t = R_{t+1} + \gamma \max_a Q(S_{t+1}, a; \theta_t) - Q(S_t, A_t; \theta_t)$.
+
+\subsection{Distributional Q-Learning}
+
+Instead of learning expected returns, distributional methods learn the full return distribution:
+
+\begin{equation}
+Z(s,a) \rightarrow \text{distribution of } G_t \text{ given } S_t = s, A_t = a
+\end{equation}
+
+The distributional Bellman equation becomes:
+\begin{equation}
+Z(s,a) \stackrel{d}{=} R(s,a) + \gamma Z(S', A')
+\end{equation}
+
+where $\stackrel{d}{=}$ denotes equality in distribution.
+
+\section{Implementation Considerations}
+
+\subsection{Memory and Computational Efficiency}
+
+\begin{notebox}[Practical Implementation Tips]
+\begin{enumerate}
+\item \textbf{Eligibility traces}: Use sparse representations for large state spaces
+\item \textbf{Experience replay}: Store and reuse past experiences for sample efficiency
+\item \textbf{Target networks}: Use separate target networks for stable learning
+\item \textbf{Prioritized updates}: Focus computation on important state-action pairs
+\end{enumerate}
+\end{notebox}
+
+\subsection{Hyperparameter Sensitivity}
+
+Key hyperparameters and their typical ranges:
+\begin{itemize}
+\item Learning rate $\alpha$: Usually $0.01$ to $0.5$
+\item Discount factor $\gamma$: Typically $0.9$ to $0.99$
+\item Trace decay $\lambda$: Often $0.9$ to $0.95$
+\item Exploration parameter $\epsilon$: Start at $1.0$, decay to $0.01$
+\end{itemize}
+
+\section{Chapter Summary}
+
+This chapter extended basic temporal difference learning with advanced techniques that address key limitations:
+
+\begin{itemize}
+\item \textbf{Multi-step methods} balance bias and variance in value estimates
+\item \textbf{Eligibility traces} enable efficient credit assignment over time
+\item \textbf{Double Q-learning} reduces maximization bias in off-policy learning
+\item \textbf{Expected SARSA} provides a unified framework for on-policy and off-policy methods
+\end{itemize}
+
+These extensions are crucial for practical applications and form the foundation for modern deep reinforcement learning algorithms covered in subsequent chapters.
+
+\begin{keyideabox}[Key Takeaways]
+\begin{enumerate}
+\item Multi-step methods interpolate between Monte Carlo and one-step TD methods
+\item Eligibility traces provide an efficient mechanism for temporal credit assignment
+\item Off-policy learning requires careful handling of maximization bias
+\item The choice between on-policy and off-policy methods depends on the specific application requirements
+\end{enumerate}
+\end{keyideabox}

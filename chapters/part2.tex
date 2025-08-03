@@ -1,11 +1,9 @@
-\part{Core Algorithms and Theory}
+\part{Function Approximation}
 
-This part develops the fundamental learning algorithms that form the core of reinforcement learning. Moving beyond the dynamic programming methods of Part I, which assume complete knowledge of the MDP, we now consider algorithms that learn from experience through interaction with the environment.
+This part extends reinforcement learning beyond tabular methods to handle large and continuous state spaces through function approximation. We begin with advanced temporal difference methods, then develop linear function approximation with rigorous convergence analysis, and culminate with neural network approaches that enable deep reinforcement learning.
 
-We begin with Monte Carlo methods that estimate value functions from complete episodes. We then develop temporal difference learning, which enables learning from individual transitions. Finally, we examine Q-learning and SARSA, which learn action-value functions and form the foundation for more advanced algorithms.
+The transition from exact to approximate methods introduces new challenges including the deadly triad of function approximation, bootstrapping, and off-policy learning. We address these challenges with careful algorithm design and theoretical analysis.
 
-Throughout this part, we emphasize mathematical rigor in convergence analysis while maintaining practical relevance for engineering applications. Each algorithm is developed with careful attention to assumptions, convergence conditions, and sample complexity bounds.
-
-\input{chapters/chapter04}
-\input{chapters/chapter05}
 \input{chapters/chapter06}
+\input{chapters/chapter07}
+\input{chapters/chapter08}

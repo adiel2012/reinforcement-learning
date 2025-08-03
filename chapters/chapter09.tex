@@ -1,4 +1,455 @@
-\chapter{Chapter 09 Title}
-\label{ch:chapter09}
+\chapter{Policy Gradient Methods}
+\label{ch:policy-gradient}
 
-This chapter will cover...
+\begin{keyideabox}[Chapter Overview]
+This chapter introduces policy gradient methods, which directly optimize the policy parameters to maximize expected return. Unlike value-based methods that learn value functions and derive policies indirectly, policy gradient methods provide a principled approach to policy optimization with strong theoretical foundations and practical advantages for continuous action spaces and stochastic policies.
+\end{keyideabox}
+
+\begin{intuitionbox}[Direct Policy Optimization]
+Imagine learning to play golf. A value-based approach would involve estimating how good each position on the course is and then choosing actions that lead to better positions. A policy gradient approach directly adjusts your swing technique based on whether your shots improve or worsen. Policy gradients optimize the "technique" (policy) directly rather than first learning the "course map" (value function).
+\end{intuitionbox}
+
+\section{Motivation for Policy Gradient Methods}
+
+Traditional value-based methods like Q-learning face several limitations that policy gradient methods address:
+
+\begin{itemize}
+    \item \textbf{Continuous Action Spaces}: Finding $\argmax_a Q(s,a)$ is intractable for continuous actions
+    \item \textbf{Stochastic Policies}: Sometimes optimal policies are inherently stochastic
+    \item \textbf{Policy Representation}: Direct parameterization allows incorporating domain knowledge
+    \item \textbf{Local Optima}: Gradual policy improvements avoid cliff effects
+\end{itemize}
+
+\begin{examplebox}[Continuous Control Example]
+Consider robotic arm control where actions are joint torques in $\real^7$. A discretized Q-function approach would require exponentially many discrete actions. Policy gradient methods can directly parameterize the policy as:
+\begin{equation}
+\pi(a|s; \theta) = \mathcal{N}(a; \mu(s; \theta), \Sigma(s; \theta))
+\end{equation}
+where $\mu(s; \theta)$ and $\Sigma(s; \theta)$ are neural networks outputting mean and covariance.
+\end{examplebox}
+
+\section{Policy Parameterization}
+
+\subsection{Discrete Action Spaces}
+
+For discrete actions, use softmax parameterization:
+\begin{equation}
+\pi(a|s; \theta) = \frac{\exp(f_a(s; \theta))}{\sum_{a' \in \action} \exp(f_{a'}(s; \theta))}
+\end{equation}
+
+where $f_a(s; \theta)$ is the preference for action $a$ in state $s$.
+
+\subsection{Continuous Action Spaces}
+
+For continuous actions, common parameterizations include:
+
+\textbf{Gaussian Policy:}
+\begin{align}
+\pi(a|s; \theta) &= \mathcal{N}(a; \mu(s; \theta_\mu), \sigma^2(s; \theta_\sigma)) \\
+&= \frac{1}{\sqrt{2\pi\sigma^2(s)}} \exp\left(-\frac{(a - \mu(s))^2}{2\sigma^2(s)}\right)
+\end{align}
+
+\textbf{Beta Policy} (for bounded actions):
+\begin{equation}
+\pi(a|s; \theta) = \text{Beta}(a; \alpha(s; \theta), \beta(s; \theta))
+\end{equation}
+
+\textbf{Deterministic Policy} (with added exploration noise):
+\begin{equation}
+a = \mu(s; \theta) + \epsilon, \quad \epsilon \sim \mathcal{N}(0, \sigma^2)
+\end{equation}
+
+\section{The Policy Gradient Theorem}
+
+The fundamental result enabling policy gradient methods is the policy gradient theorem.
+
+\begin{theorem}[Policy Gradient Theorem]
+For any differentiable policy $\pi(a|s; \theta)$ and any policy performance measure $J(\theta)$, the policy gradient is:
+\begin{equation}
+\nabla_\theta J(\theta) = \mathbb{E}_{\pi_\theta} \left[ \sum_{t=0}^\infty \nabla_\theta \log \pi(a_t|s_t; \theta) \cdot R_t \right]
+\end{equation}
+where $R_t = \sum_{k=0}^\infty \gamma^k r_{t+k}$ is the return from time $t$.
+\end{theorem}
+
+\begin{proof}
+Consider the episodic case with performance measure $J(\theta) = \mathbb{E}_{\pi_\theta}[R_0]$ where $R_0$ is the total episode return. Let $\tau = (s_0, a_0, r_0, s_1, a_1, r_1, \ldots)$ be a trajectory.
+
+The probability of trajectory $\tau$ under policy $\pi_\theta$ is:
+\begin{equation}
+p(\tau; \theta) = \rho_0(s_0) \prod_{t=0}^{T-1} \pi(a_t|s_t; \theta) p(s_{t+1}|s_t, a_t)
+\end{equation}
+
+The performance measure becomes:
+\begin{equation}
+J(\theta) = \int p(\tau; \theta) R(\tau) d\tau
+\end{equation}
+
+Taking the gradient:
+\begin{align}
+\nabla_\theta J(\theta) &= \int \nabla_\theta p(\tau; \theta) R(\tau) d\tau \\
+&= \int p(\tau; \theta) \nabla_\theta \log p(\tau; \theta) R(\tau) d\tau \\
+&= \mathbb{E}_{\pi_\theta} \left[ \nabla_\theta \log p(\tau; \theta) R(\tau) \right]
+\end{align}
+
+Since the environment dynamics don't depend on $\theta$:
+\begin{align}
+\nabla_\theta \log p(\tau; \theta) &= \nabla_\theta \log \left[ \rho_0(s_0) \prod_{t=0}^{T-1} \pi(a_t|s_t; \theta) p(s_{t+1}|s_t, a_t) \right] \\
+&= \sum_{t=0}^{T-1} \nabla_\theta \log \pi(a_t|s_t; \theta)
+\end{align}
+
+This gives the desired result. The extension to the infinite horizon case follows by similar analysis.
+\end{proof}
+
+\begin{remarkbox}[Policy Gradient Intuition]
+The policy gradient theorem says: to increase expected return, increase the log-probability of actions that led to high returns and decrease the log-probability of actions that led to low returns. This is intuitive - we want to make good actions more likely and bad actions less likely.
+\end{remarkbox}
+
+\section{REINFORCE Algorithm}
+
+REINFORCE (REward Increment = Nonnegative Factor × Offset Reinforcement × Characteristic Eligibility) is the basic policy gradient algorithm.
+
+\subsection{Basic REINFORCE}
+
+\begin{algorithm}
+\caption{REINFORCE}
+\begin{algorithmic}
+\REQUIRE Learning rate $\alpha$, policy parameterization $\pi(a|s; \theta)$
+\STATE Initialize policy parameters $\theta$ randomly
+\FOR{episode = 1, $M$}
+    \STATE Generate trajectory $\tau = (s_0, a_0, r_0, \ldots, s_T, a_T, r_T)$ using $\pi(\cdot|\cdot; \theta)$
+    \FOR{$t = 0, T$}
+        \STATE $R_t \leftarrow \sum_{k=t}^T \gamma^{k-t} r_k$ \COMMENT{Compute return}
+        \STATE $\theta \leftarrow \theta + \alpha \gamma^t R_t \nabla_\theta \log \pi(a_t|s_t; \theta)$ \COMMENT{Policy update}
+    \ENDFOR
+\ENDFOR
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{REINFORCE with Baseline}
+
+To reduce variance, subtract a baseline $b(s_t)$ that doesn't depend on the action:
+
+\begin{equation}
+\nabla_\theta J(\theta) = \mathbb{E}_{\pi_\theta} \left[ \sum_{t=0}^\infty \nabla_\theta \log \pi(a_t|s_t; \theta) \cdot (R_t - b(s_t)) \right]
+\end{equation}
+
+\begin{theorem}[Baseline Invariance]
+For any baseline function $b(s)$ that doesn't depend on the action, the policy gradient remains unbiased:
+\begin{equation}
+\mathbb{E}_{\pi_\theta} \left[ \nabla_\theta \log \pi(a|s; \theta) \cdot b(s) \right] = 0
+\end{equation}
+\end{theorem}
+
+\begin{proof}
+\begin{align}
+\mathbb{E}_{\pi_\theta} \left[ \nabla_\theta \log \pi(a|s; \theta) \cdot b(s) \right] &= \sum_a \pi(a|s; \theta) \nabla_\theta \log \pi(a|s; \theta) b(s) \\
+&= b(s) \sum_a \nabla_\theta \pi(a|s; \theta) \\
+&= b(s) \nabla_\theta \sum_a \pi(a|s; \theta) \\
+&= b(s) \nabla_\theta 1 = 0
+\end{align}
+\end{proof}
+
+The optimal baseline that minimizes variance is:
+\begin{equation}
+b^*(s) = \frac{\mathbb{E}_{\pi_\theta} \left[ (\nabla_\theta \log \pi(a|s; \theta))^2 R \right]}{\mathbb{E}_{\pi_\theta} \left[ (\nabla_\theta \log \pi(a|s; \theta))^2 \right]}
+\end{equation}
+
+In practice, the value function $V^\pi(s)$ is a good baseline choice.
+
+\section{Policy Gradient Variance Analysis}
+
+\subsection{Variance Sources}
+
+Policy gradient estimates suffer from high variance due to:
+
+\begin{enumerate}
+    \item \textbf{Monte Carlo estimation}: Using sample returns instead of true expected returns
+    \item \textbf{Credit assignment}: All actions in a trajectory receive the same return signal
+    \item \textbf{Exploration noise}: Stochastic policies introduce additional randomness
+\end{enumerate}
+
+\subsection{Variance Reduction Techniques}
+
+\textbf{1. Baselines}: As shown above, subtracting a state-dependent baseline reduces variance without introducing bias.
+
+\textbf{2. Control Variates}: Use correlated random variables to reduce variance:
+\begin{equation}
+\tilde{R}_t = R_t - c(V(s_t) - \mathbb{E}[V(s_t)])
+\end{equation}
+
+\textbf{3. Natural Gradients}: Account for the parameter space geometry (covered in next section).
+
+\textbf{4. Importance Sampling}: For off-policy updates, weight samples by the importance ratio.
+
+\section{Natural Policy Gradients}
+
+Standard gradient descent treats all parameters equally, but the policy space has intrinsic geometry. Natural gradients account for this geometry.
+
+\subsection{Fisher Information Matrix}
+
+The Fisher Information Matrix (FIM) measures the sensitivity of the policy distribution to parameter changes:
+
+\begin{equation}
+F(\theta) = \mathbb{E}_{\pi_\theta} \left[ \nabla_\theta \log \pi(a|s; \theta) (\nabla_\theta \log \pi(a|s; \theta))^T \right]
+\end{equation}
+
+\subsection{Natural Gradient Definition}
+
+The natural gradient is defined as:
+\begin{equation}
+\tilde{\nabla}_\theta J(\theta) = F(\theta)^{-1} \nabla_\theta J(\theta)
+\end{equation}
+
+\begin{theorem}[Natural Gradient Interpretation]
+The natural gradient direction is the steepest ascent direction in the space of probability distributions, measured by the KL divergence.
+\end{theorem}
+
+\subsection{Natural Policy Gradient Algorithm}
+
+\begin{algorithm}
+\caption{Natural Policy Gradient}
+\begin{algorithmic}
+\REQUIRE Learning rates $\alpha_\theta, \alpha_w$, baseline parameters $w$
+\STATE Initialize policy parameters $\theta$ and baseline parameters $w$
+\FOR{episode = 1, $M$}
+    \STATE Generate trajectory $\tau$ using $\pi(\cdot|\cdot; \theta)$
+    \FOR{$t = 0, T$}
+        \STATE $\delta_t \leftarrow R_t - V(s_t; w)$ \COMMENT{Advantage estimate}
+        \STATE $w \leftarrow w + \alpha_w \delta_t \nabla_w V(s_t; w)$ \COMMENT{Update baseline}
+    \ENDFOR
+    \STATE Compute Fisher information matrix $F(\theta)$
+    \STATE $g \leftarrow \sum_{t=0}^T \gamma^t \delta_t \nabla_\theta \log \pi(a_t|s_t; \theta)$ \COMMENT{Policy gradient}
+    \STATE $\theta \leftarrow \theta + \alpha_\theta F(\theta)^{-1} g$ \COMMENT{Natural gradient update}
+\ENDFOR
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Practical Approximations}
+
+Computing $F(\theta)^{-1}$ is expensive. Practical approximations include:
+
+\textbf{1. Conjugate Gradient}: Solve $F(\theta) d = g$ iteratively without forming $F^{-1}$.
+
+\textbf{2. Trust Region}: Constrain updates to stay within a trust region:
+\begin{align}
+\theta_{k+1} &= \arg\max_\theta \nabla_\theta J(\theta_k)^T (\theta - \theta_k) \\
+&\text{subject to } (\theta - \theta_k)^T F(\theta_k) (\theta - \theta_k) \leq \delta
+\end{align}
+
+\textbf{3. Kronecker-Factored Approximation}: Approximate $F$ using Kronecker products for neural networks.
+
+\section{Trust Region Methods}
+
+Trust region methods ensure stable policy updates by constraining the change in policy distribution.
+
+\subsection{Trust Region Policy Optimization (TRPO)}
+
+TRPO solves the constrained optimization problem:
+
+\begin{align}
+\maximize_\theta \quad & \mathbb{E}_{\pi_{\theta_{\text{old}}}} \left[ \frac{\pi(a|s; \theta)}{\pi(a|s; \theta_{\text{old}})} A^{\pi_{\theta_{\text{old}}}}(s,a) \right] \\
+\text{subject to} \quad & \mathbb{E}_{\pi_{\theta_{\text{old}}}} \left[ D_{KL}(\pi(\cdot|s; \theta_{\text{old}}) \| \pi(\cdot|s; \theta)) \right] \leq \delta
+\end{align}
+
+where $A^\pi(s,a) = Q^\pi(s,a) - V^\pi(s)$ is the advantage function.
+
+\subsection{Linear Approximation}
+
+Using first-order approximations:
+\begin{align}
+L(\theta) &\approx L(\theta_{\text{old}}) + \nabla_\theta L(\theta_{\text{old}})^T (\theta - \theta_{\text{old}}) \\
+D_{KL}(\theta_{\text{old}} \| \theta) &\approx \frac{1}{2} (\theta - \theta_{\text{old}})^T F(\theta_{\text{old}}) (\theta - \theta_{\text{old}})
+\end{align}
+
+The solution is:
+\begin{equation}
+\theta = \theta_{\text{old}} + \sqrt{\frac{2\delta}{g^T F^{-1} g}} F^{-1} g
+\end{equation}
+
+where $g = \nabla_\theta L(\theta_{\text{old}})$.
+
+\section{Policy Gradient Variants}
+
+\subsection{Actor-Critic Methods}
+
+Replace Monte Carlo returns with learned value function estimates:
+\begin{equation}
+\nabla_\theta J(\theta) \approx \mathbb{E}_{\pi_\theta} \left[ \nabla_\theta \log \pi(a|s; \theta) \cdot Q^w(s,a) \right]
+\end{equation}
+
+This introduces bias but significantly reduces variance.
+
+\subsection{Advantage Actor-Critic (A2C)}
+
+Use advantage estimates instead of Q-values:
+\begin{equation}
+A(s,a) = Q(s,a) - V(s) = r + \gamma V(s') - V(s)
+\end{equation}
+
+\subsection{Generalized Advantage Estimation (GAE)}
+
+Balance bias and variance using exponentially-weighted advantage estimates:
+\begin{align}
+\hat{A}_t^{(\lambda)} &= \sum_{l=0}^\infty (\gamma \lambda)^l \delta_{t+l} \\
+\delta_t &= r_t + \gamma V(s_{t+1}) - V(s_t)
+\end{align}
+
+where $\lambda \in [0,1]$ controls the bias-variance tradeoff.
+
+\section{Continuous Action Implementation}
+
+\subsection{Gaussian Policy Implementation}
+
+For a Gaussian policy $\pi(a|s; \theta) = \mathcal{N}(a; \mu(s; \theta_\mu), \sigma^2)$:
+
+\begin{align}
+\log \pi(a|s; \theta) &= -\frac{1}{2}\log(2\pi\sigma^2) - \frac{(a - \mu(s))^2}{2\sigma^2} \\
+\nabla_{\theta_\mu} \log \pi(a|s; \theta) &= \frac{a - \mu(s)}{\sigma^2} \nabla_{\theta_\mu} \mu(s; \theta_\mu) \\
+\nabla_{\theta_\sigma} \log \pi(a|s; \theta) &= \left( \frac{(a - \mu(s))^2}{\sigma^3} - \frac{1}{\sigma} \right) \nabla_{\theta_\sigma} \sigma
+\end{align}
+
+\subsection{Reparameterization Trick}
+
+For more stable training, reparameterize the policy:
+\begin{align}
+a &= \mu(s; \theta) + \sigma(s; \theta) \odot \epsilon \\
+\epsilon &\sim \mathcal{N}(0, I)
+\end{align}
+
+This makes the action deterministically dependent on $\theta$ and $\epsilon$.
+
+\section{Convergence Analysis}
+
+\subsection{Convergence Guarantees}
+
+\begin{theorem}[Policy Gradient Convergence]
+Under appropriate conditions (bounded rewards, Lipschitz policy, suitable learning rate), the policy gradient algorithm converges to a local optimum of the policy performance.
+\end{theorem}
+
+Key conditions include:
+\begin{itemize}
+    \item Policy $\pi(a|s; \theta)$ is differentiable in $\theta$
+    \item Policy gradient is Lipschitz continuous
+    \item Learning rate satisfies $\sum_t \alpha_t = \infty, \sum_t \alpha_t^2 < \infty$
+    \item Bounded variance of gradient estimates
+\end{itemize}
+
+\subsection{Sample Complexity}
+
+\begin{theorem}[Policy Gradient Sample Complexity]
+To achieve $\epsilon$-optimal policy, policy gradient methods require $O(\epsilon^{-2})$ samples in the worst case, but can achieve $O(\epsilon^{-1})$ under favorable conditions.
+\end{theorem}
+
+\section{Practical Implementation Considerations}
+
+\subsection{Numerical Stability}
+
+\textbf{1. Log-Probability Computation}: Compute log-probabilities directly to avoid numerical underflow.
+
+\textbf{2. Gradient Clipping}: Clip gradients to prevent exploding gradients:
+\begin{equation}
+g_{\text{clipped}} = \min\left(1, \frac{c}{\|g\|}\right) g
+\end{equation}
+
+\textbf{3. Entropy Regularization}: Add entropy bonus to encourage exploration:
+\begin{equation}
+J_{\text{total}}(\theta) = J(\theta) + \alpha H(\pi(\cdot|s; \theta))
+\end{equation}
+
+\subsection{Hyperparameter Selection}
+
+\textbf{Learning Rate}: Start with $\alpha \in [10^{-4}, 10^{-2}]$ and tune based on learning curves.
+
+\textbf{Baseline Learning Rate}: Often use faster learning for value function: $\alpha_w = 10 \alpha_\theta$.
+
+\textbf{Discount Factor}: Choose $\gamma \in [0.95, 0.999]$ depending on episode length.
+
+\textbf{Batch Size}: Larger batches reduce variance but increase computational cost.
+
+\section{Applications and Case Studies}
+
+\subsection{Robotics Control}
+
+\begin{examplebox}[Robot Arm Control]
+A 7-DOF robot arm learning to reach target positions:
+\begin{itemize}
+    \item \textbf{State}: Joint angles and velocities, target position
+    \item \textbf{Action}: Joint torques (continuous, $\real^7$)
+    \item \textbf{Policy}: Gaussian with neural network mean and fixed covariance
+    \item \textbf{Reward}: Negative distance to target plus control penalty
+\end{itemize}
+
+The policy network outputs mean torques, and Gaussian noise is added for exploration. GAE with $\lambda = 0.95$ balances bias and variance in advantage estimation.
+\end{examplebox}
+
+\subsection{Game Playing}
+
+\begin{examplebox}[Stochastic Games]
+In games with hidden information (like poker), optimal policies are often stochastic. Policy gradient methods naturally handle this:
+\begin{itemize}
+    \item \textbf{State}: Private cards, betting history, opponent modeling
+    \item \textbf{Action}: Fold, call, raise (with bet sizing)
+    \item \textbf{Policy}: Mixed strategy over discrete actions
+    \item \textbf{Reward}: Expected utility (considering risk preferences)
+\end{itemize}
+\end{examplebox}
+
+\section{Comparison with Value-Based Methods}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lcc}
+\toprule
+\textbf{Aspect} & \textbf{Policy Gradient} & \textbf{Value-Based} \\
+\midrule
+Action Spaces & Continuous, Discrete & Discrete Only \\
+Policy Type & Stochastic, Deterministic & Deterministic \\
+Sample Efficiency & Lower & Higher \\
+Stability & More Stable & Can Diverge \\
+Local Optima & Local Convergence & Global Convergence \\
+Variance & High & Lower \\
+Implementation & More Complex & Simpler \\
+\bottomrule
+\end{tabular}
+\caption{Comparison of policy gradient and value-based methods}
+\end{table}
+
+\section{Chapter Summary}
+
+Policy gradient methods provide a direct approach to policy optimization with several key advantages:
+
+\begin{itemize}
+    \item \textbf{Principled optimization}: Direct maximization of expected return
+    \item \textbf{Continuous actions}: Natural handling of continuous action spaces
+    \item \textbf{Stochastic policies}: Can represent inherently stochastic optimal policies
+    \item \textbf{Stability}: Gradual policy improvements avoid discontinuous changes
+    \item \textbf{Theoretical foundation}: Strong convergence guarantees under appropriate conditions
+\end{itemize}
+
+However, they also face challenges:
+\begin{itemize}
+    \item \textbf{High variance}: Monte Carlo estimates are noisy
+    \item \textbf{Sample inefficiency}: Require many samples for convergence
+    \item \textbf{Local optima}: Only guarantee local convergence
+    \item \textbf{Hyperparameter sensitivity}: Performance depends critically on hyperparameter choices
+\end{itemize}
+
+Key algorithmic contributions include:
+\begin{itemize}
+    \item \textbf{REINFORCE}: Basic policy gradient algorithm
+    \item \textbf{Baselines}: Variance reduction without bias
+    \item \textbf{Natural gradients}: Accounting for policy space geometry
+    \item \textbf{Trust regions}: Stable policy updates with performance guarantees
+\end{itemize}
+
+\begin{keyideabox}[Key Takeaways]
+\begin{enumerate}
+    \item Policy gradient methods optimize policies directly using the policy gradient theorem
+    \item The fundamental insight is to increase probability of actions leading to high returns
+    \item Variance reduction techniques (baselines, natural gradients) are crucial for practical success
+    \item Trust region methods provide principled approaches to stable policy updates
+    \item Policy gradients excel in continuous control and stochastic environments
+\end{enumerate}
+\end{keyideabox}
+
+The next chapter will explore actor-critic methods, which combine the best aspects of policy gradient and value-based approaches by learning both policies and value functions simultaneously.

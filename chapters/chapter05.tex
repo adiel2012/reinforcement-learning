@@ -102,9 +102,9 @@ which is typically much larger.
 
 TD methods trade increased bias for reduced variance, often resulting in lower overall MSE and faster convergence.
 
-\section{TD(λ) and Eligibility Traces}
+\section{TD($\lambda$) and Eligibility Traces}
 
-TD(λ) provides a family of algorithms that interpolate between TD(0) and Monte Carlo methods through the use of eligibility traces.
+TD($\lambda$) provides a family of algorithms that interpolate between TD(0) and Monte Carlo methods through the use of eligibility traces.
 
 \subsection{Forward View: n-step Returns}
 
@@ -119,15 +119,15 @@ The n-step TD update is:
 V(S_t) \leftarrow V(S_t) + \alpha[G_t^{(n)} - V(S_t)]
 \end{equation}
 
-\subsection{λ-Return}
+\subsection{$\lambda$-Return}
 
-The λ-return combines all n-step returns:
+The $\lambda$-return combines all n-step returns:
 \begin{equation}
 G_t^\lambda = (1-\lambda) \sum_{n=1}^\infty \lambda^{n-1} G_t^{(n)}
 \end{equation}
 
-\begin{theorem}[λ-Return Properties]
-The λ-return satisfies:
+\begin{theorem}[$\lambda$-Return Properties]
+The $\lambda$-return satisfies:
 \begin{align}
 G_t^\lambda &= R_{t+1} + \gamma[(1-\lambda)V(S_{t+1}) + \lambda G_{t+1}^\lambda] \\
 \lim_{\lambda \to 0} G_t^\lambda &= R_{t+1} + \gamma V(S_{t+1}) \quad \text{(TD(0))} \\
@@ -137,7 +137,7 @@ G_t^\lambda &= R_{t+1} + \gamma[(1-\lambda)V(S_{t+1}) + \lambda G_{t+1}^\lambda]
 
 \subsection{Backward View: Eligibility Traces}
 
-Eligibility traces provide an online, incremental implementation of TD(λ):
+Eligibility traces provide an online, incremental implementation of TD($\lambda$):
 
 \begin{align}
 \delta_t &= R_{t+1} + \gamma V(S_{t+1}) - V(S_t) \\
@@ -149,7 +149,7 @@ V(s) &\leftarrow V(s) + \alpha \delta_t e_t(s) \quad \forall s
 \end{align}
 
 \begin{algorithm}
-\caption{TD(λ) with Eligibility Traces}
+\caption{TD($\lambda$) with Eligibility Traces}
 \begin{algorithmic}
 \REQUIRE Policy $\pi$, step size $\alpha$, trace decay $\lambda$
 \STATE Initialize $V(s) \in \real$ arbitrarily for all $s$
@@ -173,7 +173,7 @@ V(s) &\leftarrow V(s) + \alpha \delta_t e_t(s) \quad \forall s
 \subsection{Equivalence Theorem}
 
 \begin{theorem}[Forward-Backward Equivalence]
-Under certain conditions, the forward view (using λ-returns) and backward view (using eligibility traces) produce identical updates when applied offline to a complete episode.
+Under certain conditions, the forward view (using $\lambda$-returns) and backward view (using eligibility traces) produce identical updates when applied offline to a complete episode.
 \end{theorem}
 
 \section{Convergence Theory for Linear Function Approximation}
@@ -267,9 +267,9 @@ V(S_t) \leftarrow V(S_t) + \alpha[G_t^{(n)} - V(S_t)]
 For n-step methods, there exists an optimal n that minimizes mean squared error, typically $n \in [3, 10]$ for many problems.
 \end{theorem}
 
-\subsection{True Online TD(λ)}
+\subsection{True Online TD($\lambda$)}
 
-The classical TD(λ) is not equivalent to the forward view when using function approximation. True online TD(λ) corrects this:
+The classical TD($\lambda$) is not equivalent to the forward view when using function approximation. True online TD($\lambda$) corrects this:
 
 \begin{align}
 \mathbf{w}_{t+1} &= \mathbf{w}_t + \alpha \delta_t \mathbf{z}_t + \alpha(\mathbf{w}_t^T \boldsymbol{\phi}_t - \mathbf{w}_{t-1}^T \boldsymbol{\phi}_t)(\mathbf{z}_t - \boldsymbol{\phi}_t) \\
@@ -292,7 +292,7 @@ This chapter developed the mathematical foundations of temporal difference learn
 \begin{itemize}
     \item TD(0) algorithm with convergence analysis using stochastic approximation theory
     \item Bias-variance tradeoff analysis showing TD's advantage in variance reduction
-    \item TD(λ) and eligibility traces providing a spectrum between TD(0) and Monte Carlo
+    \item TD($\lambda$) and eligibility traces providing a spectrum between TD(0) and Monte Carlo
     \item Convergence theory for linear function approximation with error bounds
     \item Comparative analysis with Monte Carlo and dynamic programming methods
     \item Advanced topics including multi-step methods and gradient TD approaches

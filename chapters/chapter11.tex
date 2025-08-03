@@ -1,4 +1,535 @@
-\chapter{Chapter 11 Title}
-\label{ch:chapter11}
+\chapter{Advanced Policy Optimization}
+\label{ch:advanced-policy-optimization}
 
-This chapter will cover...
+\begin{keyideabox}[Chapter Overview]
+This chapter covers state-of-the-art policy optimization algorithms that address the stability and sample efficiency challenges of basic policy gradient methods. We examine Trust Region Policy Optimization (TRPO), Proximal Policy Optimization (PPO), Soft Actor-Critic (SAC), and other advanced techniques that have enabled successful deployment of RL in complex real-world applications.
+\end{keyideabox}
+
+\begin{intuitionbox}[Stable Policy Improvement]
+Imagine learning to fly an airplane. Small, careful adjustments to your technique gradually improve performance without risk of catastrophic failure. Advanced policy optimization methods implement this philosophy algorithmically - they ensure policy updates are conservative enough to maintain stability while still making meaningful progress toward optimal performance. Think of them as sophisticated "safety governors" for policy learning.
+\end{intuitionbox}
+
+\section{Motivation for Advanced Methods}
+
+Basic policy gradient and actor-critic methods suffer from several practical limitations:
+
+\begin{itemize}
+    \item \textbf{Instability}: Large policy updates can cause performance collapse
+    \item \textbf{Sample Inefficiency}: High variance requires many samples
+    \item \textbf{Hyperparameter Sensitivity}: Performance depends critically on learning rates
+    \item \textbf{Exploration}: Inadequate exploration in complex environments
+    \item \textbf{Local Optima}: Getting stuck in suboptimal policies
+\end{itemize}
+
+Advanced methods address these issues through principled approaches to:
+\begin{itemize}
+    \item Constraining policy updates (TRPO, PPO)
+    \item Maximum entropy formulations (SAC)
+    \item Adaptive trust regions
+    \item Advanced exploration strategies
+\end{itemize}
+
+\section{Trust Region Policy Optimization (TRPO)}
+
+TRPO ensures monotonic policy improvement by constraining the KL divergence between successive policies.
+
+\subsection{Theoretical Foundation}
+
+\begin{theorem}[Policy Improvement Bound]
+Let $\pi$ and $\tilde{\pi}$ be two policies. Then:
+\begin{equation}
+\eta(\tilde{\pi}) = \eta(\pi) + \mathbb{E}_{\tau \sim \tilde{\pi}} \left[ \sum_{t=0}^\infty \gamma^t A^\pi(s_t, a_t) \right]
+\end{equation}
+where $\eta(\pi)$ is the expected return and $A^\pi$ is the advantage function.
+\end{theorem}
+
+\begin{theorem}[Conservative Policy Iteration]
+Define the total variation divergence $D_{TV}(\pi, \tilde{\pi}) = \max_s ||\pi(\cdot|s) - \tilde{\pi}(\cdot|s)||_{TV}$. Then:
+\begin{equation}
+\eta(\tilde{\pi}) \geq \eta(\pi) + \mathbb{E}_{\tau \sim \pi} \left[ \sum_{t=0}^\infty \gamma^t A^\pi(s_t, a_t) \frac{\tilde{\pi}(a_t|s_t)}{\pi(a_t|s_t)} \right] - \frac{4\epsilon \gamma}{(1-\gamma)^2} D_{TV}(\pi, \tilde{\pi})^2
+\end{equation}
+where $\epsilon = \max_{s,a} |A^\pi(s,a)|$.
+\end{theorem}
+
+This suggests constraining the policy update to ensure improvement.
+
+\subsection{TRPO Algorithm}
+
+TRPO maximizes the surrogate objective subject to a KL constraint:
+
+\begin{align}
+\maximize_\theta \quad & \mathbb{E}_{\pi_{\theta_{\text{old}}}} \left[ \frac{\pi(a|s; \theta)}{\pi(a|s; \theta_{\text{old}})} A^{\pi_{\theta_{\text{old}}}}(s,a) \right] \\
+\text{subject to} \quad & \mathbb{E}_{\pi_{\theta_{\text{old}}}} \left[ D_{KL}(\pi(\cdot|s; \theta_{\text{old}}) \| \pi(\cdot|s; \theta)) \right] \leq \delta
+\end{align}
+
+\begin{algorithm}
+\caption{Trust Region Policy Optimization (TRPO)}
+\begin{algorithmic}
+\REQUIRE KL constraint $\delta$, backtracking parameters $\alpha, \beta$
+\FOR{iteration = 1, $N$}
+    \STATE Collect trajectories using current policy $\pi_{\theta_{\text{old}}}$
+    \STATE Estimate advantage function $\hat{A}_t$ using GAE
+    \STATE Compute policy gradient: $g = \nabla_\theta \mathbb{E} \left[ \frac{\pi(a|s; \theta)}{\pi(a|s; \theta_{\text{old}})} \hat{A} \right] \bigg|_{\theta=\theta_{\text{old}}}$
+    \STATE Compute Fisher information matrix: $H = \nabla^2_\theta \mathbb{E} [D_{KL}] \big|_{\theta=\theta_{\text{old}}}$
+    \STATE Solve $H d = g$ for search direction $d$ using conjugate gradient
+    \STATE Compute step size: $\beta = \sqrt{\frac{2\delta}{d^T H d}}$
+    \STATE Full step: $\theta_{\text{new}} = \theta_{\text{old}} + \beta d$
+    \WHILE{KL constraint violated or objective doesn't improve}
+        \STATE $\beta \leftarrow \alpha \beta$ \COMMENT{Backtracking line search}
+        \STATE $\theta_{\text{new}} = \theta_{\text{old}} + \beta d$
+    \ENDWHILE
+    \STATE $\theta_{\text{old}} \leftarrow \theta_{\text{new}}$
+\ENDFOR
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Conjugate Gradient Implementation}
+
+Computing $H^{-1}g$ directly is expensive. TRPO uses conjugate gradient to solve $Hd = g$:
+
+\begin{algorithm}
+\caption{Conjugate Gradient for TRPO}
+\begin{algorithmic}
+\REQUIRE Function to compute $Hv$ (Hessian-vector product), gradient $g$, tolerance $\epsilon$
+\STATE $r_0 = g$, $p_0 = r_0$, $x_0 = 0$
+\FOR{$k = 0, K-1$}
+    \STATE $\alpha_k = \frac{r_k^T r_k}{p_k^T H p_k}$
+    \STATE $x_{k+1} = x_k + \alpha_k p_k$
+    \STATE $r_{k+1} = r_k - \alpha_k H p_k$
+    \IF{$\|r_{k+1}\| < \epsilon$}
+        \STATE \textbf{return} $x_{k+1}$
+    \ENDIF
+    \STATE $\beta_k = \frac{r_{k+1}^T r_{k+1}}{r_k^T r_k}$
+    \STATE $p_{k+1} = r_{k+1} + \beta_k p_k$
+\ENDFOR
+\end{algorithmic}
+\end{algorithm}
+
+\section{Proximal Policy Optimization (PPO)}
+
+PPO simplifies TRPO by using a clipped surrogate objective instead of explicit KL constraints.
+
+\subsection{Clipped Surrogate Objective}
+
+PPO clips the importance sampling ratio to prevent large policy updates:
+
+\begin{equation}
+L^{\text{CLIP}}(\theta) = \mathbb{E}_t \left[ \min \left( r_t(\theta) \hat{A}_t, \text{clip}(r_t(\theta), 1-\epsilon, 1+\epsilon) \hat{A}_t \right) \right]
+\end{equation}
+
+where:
+\begin{itemize}
+    \item $r_t(\theta) = \frac{\pi(a_t|s_t; \theta)}{\pi(a_t|s_t; \theta_{\text{old}})}$ is the importance ratio
+    \item $\epsilon$ is the clipping parameter (typically 0.1 or 0.2)
+    \item $\hat{A}_t$ is the advantage estimate
+\end{itemize}
+
+\begin{intuitionbox}[PPO Clipping Intuition]
+The clipping mechanism works as follows:
+\begin{itemize}
+    \item If advantage is positive (good action), allow policy probability to increase up to $(1+\epsilon)$ times
+    \item If advantage is negative (bad action), allow policy probability to decrease down to $(1-\epsilon)$ times  
+    \item This prevents excessive policy changes while still allowing meaningful updates
+\end{itemize}
+\end{intuitionbox}
+
+\subsection{PPO Variants}
+
+\textbf{PPO-Clip}: Uses the clipped objective above.
+
+\textbf{PPO-Penalty}: Uses adaptive KL penalty:
+\begin{equation}
+L^{\text{KLPEN}}(\theta) = \mathbb{E}_t \left[ r_t(\theta) \hat{A}_t - \beta D_{KL}(\pi_{\text{old}}, \pi) \right]
+\end{equation}
+
+The penalty coefficient $\beta$ is adapted based on observed KL divergence.
+
+\begin{algorithm}
+\caption{Proximal Policy Optimization (PPO-Clip)}
+\begin{algorithmic}
+\REQUIRE Clipping parameter $\epsilon$, mini-batch size $M$, epochs $K$
+\FOR{iteration = 1, $N$}
+    \STATE Collect trajectories using policy $\pi_{\theta_{\text{old}}}$
+    \STATE Compute advantage estimates $\hat{A}_t$ using GAE
+    \FOR{epoch = 1, $K$}
+        \FOR{mini-batch of size $M$}
+            \STATE Compute importance ratios: $r_t = \frac{\pi(a_t|s_t; \theta)}{\pi(a_t|s_t; \theta_{\text{old}})}$
+            \STATE Compute clipped objective: $L^{\text{CLIP}} = \mathbb{E} [\min(r_t \hat{A}_t, \text{clip}(r_t, 1-\epsilon, 1+\epsilon) \hat{A}_t)]$
+            \STATE Update policy: $\theta \leftarrow \theta + \alpha \nabla_\theta L^{\text{CLIP}}$
+        \ENDFOR
+    \ENDFOR
+    \STATE $\theta_{\text{old}} \leftarrow \theta$
+\ENDFOR
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{PPO Analysis}
+
+\begin{theorem}[PPO Improvement Bound]
+Under appropriate conditions, PPO provides a lower bound on policy improvement:
+\begin{equation}
+\eta(\pi) - \eta(\pi_{\text{old}}) \geq \frac{1}{1-\gamma} \mathbb{E}_{\pi_{\text{old}}} [L^{\text{CLIP}}(\pi)]
+\end{equation}
+\end{theorem}
+
+PPO's advantages over TRPO:
+\begin{itemize}
+    \item Simpler implementation (no conjugate gradient)
+    \item Better sample efficiency in practice
+    \item Less computational overhead
+    \item More robust to hyperparameter choices
+\end{itemize}
+
+\section{Soft Actor-Critic (SAC)}
+
+SAC incorporates entropy regularization for improved exploration and robustness.
+
+\subsection{Maximum Entropy Framework}
+
+The maximum entropy objective is:
+\begin{equation}
+J(\pi) = \mathbb{E}_{\tau \sim \pi} \left[ \sum_{t=0}^T \gamma^t (r(s_t, a_t) + \alpha H(\pi(\cdot|s_t))) \right]
+\end{equation}
+
+where $H(\pi(\cdot|s))$ is the policy entropy and $\alpha$ controls the exploration-exploitation tradeoff.
+
+\subsection{Entropy-Regularized Value Functions}
+
+Define the soft Q-function and soft value function:
+\begin{align}
+Q^{\pi}(s_t, a_t) &= r(s_t, a_t) + \gamma \mathbb{E}_{s_{t+1} \sim p} [V^{\pi}(s_{t+1})] \\
+V^{\pi}(s_t) &= \mathbb{E}_{a_t \sim \pi} [Q^{\pi}(s_t, a_t) - \alpha \log \pi(a_t|s_t)]
+\end{align}
+
+\subsection{SAC Algorithm}
+
+SAC learns:
+\begin{itemize}
+    \item Soft Q-function $Q_\phi(s,a)$ (often two Q-functions to address overestimation)
+    \item Policy $\pi_\theta(a|s)$ (typically a squashed Gaussian)
+    \item Temperature parameter $\alpha$ (learned automatically)
+\end{itemize}
+
+\begin{algorithm}
+\caption{Soft Actor-Critic (SAC)}
+\begin{algorithmic}
+\REQUIRE Replay buffer $\mathcal{D}$, target smoothing coefficient $\tau$
+\STATE Initialize parameters $\theta$, $\phi_1$, $\phi_2$, $\bar{\phi}_1 = \phi_1$, $\bar{\phi}_2 = \phi_2$
+\FOR{each environment step}
+    \STATE $a_t \sim \pi_\theta(\cdot|s_t)$ \COMMENT{Sample action}
+    \STATE $s_{t+1} \sim p(\cdot|s_t, a_t)$ \COMMENT{Environment step}
+    \STATE Store $(s_t, a_t, r_t, s_{t+1})$ in $\mathcal{D}$
+    \IF{update time}
+        \FOR{each gradient step}
+            \STATE Sample mini-batch from $\mathcal{D}$
+            \STATE Update Q-functions:
+            \STATE \quad $L_Q = \mathbb{E} [(Q_\phi(s,a) - (r + \gamma (1-d) V_{\bar{\phi}}(s')))^2]$
+            \STATE Update policy:
+            \STATE \quad $L_\pi = \mathbb{E}_{s \sim \mathcal{D}, a \sim \pi_\theta} [\alpha \log \pi_\theta(a|s) - Q_\phi(s,a)]$
+            \STATE Update target networks: $\bar{\phi} \leftarrow \tau \phi + (1-\tau) \bar{\phi}$
+            \STATE Update temperature: $L_\alpha = -\mathbb{E} [\alpha (\log \pi_\theta(a|s) + \bar{H})]$
+        \ENDFOR
+    \ENDIF
+\ENDFOR
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Automatic Temperature Tuning}
+
+SAC automatically adjusts the temperature parameter $\alpha$ to match a target entropy:
+\begin{equation}
+\alpha^* = \arg\min_\alpha \mathbb{E}_{a_t \sim \pi_t} [-\alpha \log \pi_t(a_t|s_t) - \alpha \bar{H}]
+\end{equation}
+
+where $\bar{H}$ is the target entropy (often $-\dim(\mathcal{A})$ for continuous actions).
+
+\section{Other Advanced Methods}
+
+\subsection{Distributional Policy Gradients}
+
+Instead of learning expected returns, learn the full return distribution:
+\begin{equation}
+Z^\pi(s,a) = \mathbb{E}_{\tau \sim \pi} \left[ \sum_{t=0}^\infty \gamma^t r_{t+1} \bigg| s_0=s, a_0=a \right]
+\end{equation}
+
+Advantages:
+\begin{itemize}
+    \item Better uncertainty quantification
+    \item Improved exploration through uncertainty
+    \item More robust to reward shaping
+\end{itemize}
+
+\subsection{Population-Based Training}
+
+Train multiple policies simultaneously with different hyperparameters:
+\begin{itemize}
+    \item Exploit: Copy parameters from best-performing agents
+    \item Explore: Mutate hyperparameters of copied agents
+    \item Enables automatic hyperparameter optimization
+\end{itemize}
+
+\subsection{Evolutionary Strategies (ES)}
+
+Use evolution instead of gradients for policy optimization:
+\begin{equation}
+\nabla_\theta \mathbb{E}[F(\theta + \sigma \epsilon)] = \frac{1}{\sigma} \mathbb{E}[F(\theta + \sigma \epsilon) \epsilon]
+\end{equation}
+
+where $\epsilon \sim \mathcal{N}(0, I)$.
+
+Advantages:
+\begin{itemize}
+    \item No backpropagation required
+    \item Highly parallelizable
+    \item Robust to non-smooth objectives
+    \item Natural exploration through parameter noise
+\end{itemize}
+
+\section{Implementation Details}
+
+\subsection{Network Architecture Choices}
+
+\textbf{Policy Networks:}
+\begin{itemize}
+    \item Continuous actions: Tanh-squashed Gaussian
+    \item Discrete actions: Softmax over action logits
+    \item Typical depth: 2-4 hidden layers
+    \item Activation functions: ReLU, Swish, or ELU
+\end{itemize}
+
+\textbf{Value Networks:}
+\begin{itemize}
+    \item Similar architecture to policy networks
+    \item Sometimes deeper for better function approximation
+    \item Layer normalization can improve stability
+\end{itemize}
+
+\subsection{Hyperparameter Guidelines}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lcc}
+\toprule
+\textbf{Hyperparameter} & \textbf{PPO} & \textbf{SAC} \\
+\midrule
+Learning Rate & $3 \times 10^{-4}$ & $3 \times 10^{-4}$ \\
+Batch Size & 2048-65536 & 256-1024 \\
+Discount Factor & 0.99 & 0.99 \\
+GAE Lambda & 0.95 & - \\
+Clip Range & 0.2 & - \\
+Entropy Coefficient & 0.01 & Auto \\
+Target Update Rate & - & 0.005 \\
+\bottomrule
+\end{tabular}
+\caption{Typical hyperparameter values for advanced policy optimization methods}
+\end{table}
+
+\subsection{Common Implementation Tricks}
+
+\textbf{1. Observation Normalization:}
+\begin{equation}
+s_{\text{norm}} = \frac{s - \mu_s}{\sigma_s + \epsilon}
+\end{equation}
+
+\textbf{2. Reward Scaling:}
+\begin{equation}
+r_{\text{scaled}} = \frac{r}{\sigma_r}
+\end{equation}
+
+\textbf{3. Gradient Clipping:}
+\begin{equation}
+g_{\text{clipped}} = \min\left(1, \frac{c}{\|g\|}\right) g
+\end{equation}
+
+\textbf{4. Learning Rate Annealing:}
+\begin{equation}
+\alpha_t = \alpha_0 \left(1 - \frac{t}{T}\right)
+\end{equation}
+
+\section{Comparative Analysis}
+
+\subsection{Algorithm Comparison}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lccccc}
+\toprule
+\textbf{Algorithm} & \textbf{Sample Eff.} & \textbf{Stability} & \textbf{Impl. Difficulty} & \textbf{Exploration} & \textbf{Continuous} \\
+\midrule
+TRPO & Medium & High & High & Medium & Yes \\
+PPO & Medium & High & Low & Medium & Yes \\
+SAC & High & Medium & Medium & High & Yes \\
+A3C & Low & Medium & Medium & Medium & Yes \\
+DDPG & Medium & Low & Medium & Low & Yes \\
+\bottomrule
+\end{tabular}
+\caption{Comparison of advanced policy optimization algorithms}
+\end{table}
+
+\subsection{When to Use Which Algorithm}
+
+\textbf{PPO}: Good default choice for most problems
+\begin{itemize}
+    \item Stable and robust
+    \item Easy to implement and tune
+    \item Works well on discrete and continuous actions
+\end{itemize}
+
+\textbf{SAC}: Best for exploration-heavy environments
+\begin{itemize}
+    \item Excellent sample efficiency
+    \item Strong exploration through entropy
+    \item Requires more tuning than PPO
+\end{itemize}
+
+\textbf{TRPO}: When stability is paramount
+\begin{itemize}
+    \item Theoretical guarantees of improvement
+    \item More computational overhead
+    \item Good for safety-critical applications
+\end{itemize}
+
+\section{Advanced Exploration Techniques}
+
+\subsection{Curiosity-Driven Exploration}
+
+Add intrinsic motivation based on prediction errors:
+\begin{equation}
+r_{\text{total}} = r_{\text{ext}} + \beta r_{\text{int}}
+\end{equation}
+
+where $r_{\text{int}}$ measures the novelty or surprise of the current state.
+
+\subsection{Count-Based Exploration}
+
+Encourage visiting infrequently seen states:
+\begin{equation}
+r_{\text{exploration}} = \frac{\beta}{\sqrt{N(s) + 1}}
+\end{equation}
+
+where $N(s)$ is the visitation count for state $s$.
+
+\subsection{Thompson Sampling for RL}
+
+Maintain uncertainty estimates over value functions and sample from the posterior for exploration.
+
+\section{Safety Considerations}
+
+\subsection{Safe Policy Updates}
+
+\begin{itemize}
+    \item \textbf{Conservative updates}: Limit policy changes
+    \item \textbf{Rollback mechanisms}: Revert if performance degrades
+    \item \textbf{Safety constraints}: Incorporate explicit safety constraints
+\end{itemize}
+
+\subsection{Constrained Policy Optimization}
+
+Extend policy optimization to handle constraints:
+\begin{align}
+\maximize_\theta \quad & J(\theta) \\
+\text{subject to} \quad & J_c(\theta) \leq \delta
+\end{align}
+
+where $J_c(\theta)$ measures constraint violations.
+
+\section{Applications and Case Studies}
+
+\subsection{Continuous Control}
+
+\begin{examplebox}[Robotic Manipulation]
+Training a robot arm for object manipulation:
+\begin{itemize}
+    \item \textbf{Environment}: MuJoCo physics simulation
+    \item \textbf{State}: Joint positions, velocities, object pose, contact forces
+    \item \textbf{Action}: Joint torques (7-DOF continuous)
+    \item \textbf{Reward}: Task completion + efficiency penalties
+    \item \textbf{Algorithm}: SAC for exploration, PPO for stability
+\end{itemize}
+
+SAC's entropy regularization helps explore the space of manipulation strategies, while PPO provides stable convergence once good strategies are discovered.
+\end{examplebox}
+
+\subsection{Game Playing}
+
+\begin{examplebox}[Real-Time Strategy Games]
+Training agents for complex strategy games:
+\begin{itemize}
+    \item \textbf{State}: Game state representation (units, resources, map)
+    \item \textbf{Action}: High-level strategic decisions
+    \item \textbf{Reward}: Win/loss with intermediate objectives
+    \item \textbf{Algorithm}: PPO with hierarchical policies
+\end{itemize}
+
+PPO's stability is crucial for the long training times required, while hierarchical decomposition handles the complex action space.
+\end{examplebox}
+
+\section{Debugging and Diagnostics}
+
+\subsection{Common Issues and Solutions}
+
+\textbf{Policy Collapse:}
+\begin{itemize}
+    \item Symptoms: Sudden performance drop, deterministic policy
+    \item Solutions: Reduce learning rate, add entropy regularization, use PPO clipping
+\end{itemize}
+
+\textbf{Slow Learning:}
+\begin{itemize}
+    \item Symptoms: Flat learning curves, low variance
+    \item Solutions: Increase learning rate, improve exploration, check advantage estimates
+\end{itemize}
+
+\textbf{Instability:}
+\begin{itemize}
+    \item Symptoms: High variance in performance, oscillating rewards
+    \item Solutions: Use target networks, gradient clipping, smaller batch sizes
+\end{itemize}
+
+\subsection{Diagnostic Metrics}
+
+\begin{itemize}
+    \item \textbf{KL Divergence}: Monitor policy changes between updates
+    \item \textbf{Explained Variance}: Measure value function quality
+    \item \textbf{Policy Entropy}: Track exploration level
+    \item \textbf{Gradient Norms}: Monitor for vanishing/exploding gradients
+\end{itemize}
+
+\section{Chapter Summary}
+
+Advanced policy optimization methods address the key limitations of basic policy gradient approaches:
+
+\begin{itemize}
+    \item \textbf{TRPO}: Provides theoretical guarantees through trust regions
+    \item \textbf{PPO}: Simplifies TRPO while maintaining stability
+    \item \textbf{SAC}: Incorporates entropy for robust exploration
+    \item \textbf{Advanced techniques}: Population training, distributional methods, ES
+\end{itemize}
+
+Key algorithmic innovations:
+\begin{itemize}
+    \item \textbf{Conservative updates}: Preventing destructive policy changes
+    \item \textbf{Entropy regularization}: Encouraging exploration and robustness
+    \item \textbf{Automatic tuning}: Reducing hyperparameter sensitivity
+    \item \textbf{Multiple objectives}: Balancing multiple competing goals
+\end{itemize}
+
+Practical considerations:
+\begin{itemize}
+    \item \textbf{Implementation complexity}: Balance between simplicity and performance
+    \item \textbf{Hyperparameter sensitivity}: Robust default settings
+    \item \textbf{Computational efficiency}: Scalable to large problems
+    \item \textbf{Safety}: Preventing catastrophic failures during learning
+\end{itemize}
+
+\begin{keyideabox}[Key Takeaways]
+\begin{enumerate}
+    \item Advanced policy optimization methods ensure stable, monotonic improvement
+    \item Trust regions and clipping prevent destructive policy updates
+    \item Entropy regularization improves exploration and robustness
+    \item Automatic hyperparameter tuning reduces manual tuning burden
+    \item Algorithm choice depends on environment characteristics and requirements
+\end{enumerate}
+\end{keyideabox}
+
+The next chapter will explore multi-agent reinforcement learning, where multiple agents learn simultaneously in shared environments, introducing game-theoretic considerations and new challenges for policy optimization.

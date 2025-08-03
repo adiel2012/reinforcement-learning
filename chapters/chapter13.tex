@@ -1,4 +1,518 @@
-\chapter{Chapter 13 Title}
-\label{ch:chapter13}
+\chapter{Hierarchical Reinforcement Learning}
+\label{ch:hierarchical-rl}
 
-This chapter will cover...
+\begin{keyideabox}[Chapter Overview]
+Hierarchical Reinforcement Learning (HRL) addresses the challenge of learning in environments with complex temporal structure by decomposing policies into multiple levels of abstraction. This chapter covers temporal abstraction through options and skills, goal-conditioned RL, feudal networks, and other approaches that enable agents to learn and reason at multiple time scales for solving complex, long-horizon tasks.
+\end{keyideabox}
+
+\begin{intuitionbox}[Cooking a Complex Meal]
+Consider learning to cook a multi-course dinner. A flat RL approach would learn every low-level action (chop carrots, turn on stove, add salt) directly from the final reward (good meal). This is inefficient and makes credit assignment nearly impossible. A hierarchical approach breaks the task into subtasks: prepare appetizer, cook main course, make dessert. Each subtask has its own goal and can be learned semi-independently. High-level planning coordinates the subtasks, while low-level policies execute them. This temporal decomposition dramatically simplifies learning.
+\end{intuitionbox}
+
+\section{Motivation for Hierarchical RL}
+
+\subsection{Challenges in Long-Horizon Tasks}
+
+Standard RL faces several difficulties in complex environments:
+
+\begin{itemize}
+    \item \textbf{Sparse Rewards}: Long delays between actions and rewards
+    \item \textbf{Credit Assignment}: Determining which actions led to success
+    \item \textbf{Exploration}: Exponentially large state-action spaces
+    \item \textbf{Sample Complexity}: Many samples needed for complex behaviors
+    \item \textbf{Transfer}: Difficulty reusing learned behaviors
+\end{itemize}
+
+\subsection{Temporal Abstraction Benefits}
+
+Hierarchical approaches address these challenges through:
+
+\begin{itemize}
+    \item \textbf{Temporal abstraction}: Actions that extend over multiple time steps
+    \item \textbf{State abstraction}: Higher-level representations that ignore irrelevant details
+    \item \textbf{Structured exploration}: Guided exploration through subgoals
+    \item \textbf{Skill reuse}: Transfer of learned behaviors across tasks
+    \item \textbf{Compositional learning}: Building complex behaviors from simpler components
+\end{itemize}
+
+\section{The Options Framework}
+
+\subsection{Semi-Markov Decision Processes (SMDPs)}
+
+Options extend MDPs to allow temporally extended actions:
+
+\begin{definition}[Semi-Markov Decision Process]
+An SMDP is defined by $\langle \mathcal{S}, \mathcal{O}, R, P, \gamma \rangle$ where:
+\begin{itemize}
+    \item $\mathcal{S}$: State space
+    \item $\mathcal{O}$: Set of options (temporally extended actions)
+    \item $R(s, o)$: Expected reward for executing option $o$ in state $s$
+    \item $P(s'|s, o)$: Transition probability after completing option $o$
+    \item $\gamma$: Discount factor
+\end{itemize}
+\end{definition}
+
+\subsection{Option Definition}
+
+\begin{definition}[Option]
+An option $o \in \mathcal{O}$ is defined by a triple $\langle \mathcal{I}_o, \pi_o, \beta_o \rangle$:
+\begin{itemize}
+    \item $\mathcal{I}_o \subseteq \mathcal{S}$: Initiation set (states where option can start)
+    \item $\pi_o: \mathcal{S} \times \mathcal{A} \to [0,1]$: Option policy
+    \item $\beta_o: \mathcal{S} \to [0,1]$: Termination condition
+\end{itemize}
+\end{definition}
+
+An option executes as follows:
+1. Check if current state $s \in \mathcal{I}_o$
+2. If yes, follow policy $\pi_o$ until termination
+3. Terminate with probability $\beta_o(s)$ at each step
+
+\subsection{Value Functions for Options}
+
+\textbf{Option-Value Function:}
+\begin{equation}
+Q^\pi(s, o) = \mathbb{E} \left[ \sum_{k=0}^{\tau_o-1} \gamma^k r_{t+k+1} + \gamma^{\tau_o} V^\pi(s_{t+\tau_o}) \bigg| s_t = s, o_t = o \right]
+\end{equation}
+
+where $\tau_o$ is the option duration.
+
+\textbf{Intra-Option Value Function:}
+\begin{equation}
+Q_\Omega(s, a) = r(s, a) + \gamma \sum_{s'} P(s'|s, a) \left[ (1 - \beta_o(s')) Q_\Omega(s', a') + \beta_o(s') V_\Omega(s') \right]
+\end{equation}
+
+\subsection{Option-Critic Algorithm}
+
+Option-Critic learns options end-to-end without predefined subgoals:
+
+\begin{algorithm}
+\caption{Option-Critic}
+\begin{algorithmic}
+\REQUIRE Learning rates $\alpha_\theta, \alpha_\psi, \alpha_\omega$
+\STATE Initialize option policies $\pi_{o,\theta}$, termination functions $\beta_{o,\psi}$, Q-function $Q_\omega$
+\FOR{episode = 1, $M$}
+    \STATE Initialize state $s_0$, select option $o_0$
+    \FOR{$t = 0, T-1$}
+        \STATE Sample action $a_t \sim \pi_{o_t}(s_t)$
+        \STATE Execute $a_t$, observe $r_t, s_{t+1}$
+        \STATE Sample termination $\beta_t \sim \beta_{o_t}(s_{t+1})$
+        \IF{$\beta_t = 1$}
+            \STATE Select new option $o_{t+1}$
+        \ELSE
+            \STATE $o_{t+1} = o_t$
+        \ENDIF
+        
+        \STATE \COMMENT{Update Q-function}
+        \STATE $U_t = r_t + \gamma [(1-\beta_{o_t}(s_{t+1})) Q_\omega(s_{t+1}, o_t) + \beta_{o_t}(s_{t+1}) V_\omega(s_{t+1})]$
+        \STATE $\omega \leftarrow \omega + \alpha_\omega (U_t - Q_\omega(s_t, o_t)) \nabla_\omega Q_\omega(s_t, o_t)$
+        
+        \STATE \COMMENT{Update option policy}
+        \STATE $A_\Omega = Q_\omega(s_t, o_t) - V_\omega(s_t)$
+        \STATE $\theta \leftarrow \theta + \alpha_\theta A_\Omega \nabla_\theta \log \pi_{o_t,\theta}(a_t|s_t)$
+        
+        \STATE \COMMENT{Update termination function}
+        \STATE $A_t = Q_\omega(s_{t+1}, o_t) - V_\omega(s_{t+1})$
+        \STATE $\psi \leftarrow \psi - \alpha_\psi A_t \nabla_\psi \beta_{o_t,\psi}(s_{t+1})$
+    \ENDFOR
+\ENDFOR
+\end{algorithmic}
+\end{algorithm}
+
+\section{Goal-Conditioned Reinforcement Learning}
+
+\subsection{Goal-Conditioned MDPs}
+
+Extend MDPs to include explicit goals:
+
+\begin{definition}[Goal-Conditioned MDP]
+A Goal-Conditioned MDP is defined by $\langle \mathcal{S}, \mathcal{A}, \mathcal{G}, P, R, \gamma \rangle$ where:
+\begin{itemize}
+    \item $\mathcal{G}$: Goal space
+    \item $R: \mathcal{S} \times \mathcal{A} \times \mathcal{G} \to \mathbb{R}$: Goal-dependent reward
+    \item Policy: $\pi(a|s, g)$ conditioned on goal $g$
+\end{itemize}
+\end{definition}
+
+\subsection{Universal Value Functions}
+
+\begin{equation}
+V^\pi(s, g) = \mathbb{E}_\pi \left[ \sum_{t=0}^\infty \gamma^t r(s_t, a_t, g) \bigg| s_0 = s \right]
+\end{equation}
+
+\begin{equation}
+Q^\pi(s, a, g) = \mathbb{E}_\pi \left[ \sum_{t=0}^\infty \gamma^t r(s_t, a_t, g) \bigg| s_0 = s, a_0 = a \right]
+\end{equation}
+
+\subsection{Hindsight Experience Replay (HER)}
+
+HER improves sample efficiency by learning from failures:
+
+\textbf{Key Insight}: Even if an agent fails to reach the intended goal, it may have accidentally achieved other goals.
+
+\begin{algorithm}
+\caption{Hindsight Experience Replay}
+\begin{algorithmic}
+\REQUIRE Replay buffer $\mathcal{R}$, strategy $S$ for selecting goals
+\FOR{episode = 1, $M$}
+    \STATE Sample goal $g$ and collect episode $\tau = (s_0, a_0, r_0, \ldots, s_T)$
+    \FOR{$t = 0, T$}
+        \STATE Store transition $(s_t, a_t, r_t, s_{t+1}, g)$ in $\mathcal{R}$
+        \STATE Sample additional goals $G'$ using strategy $S$
+        \FOR{$g' \in G'$}
+            \STATE $r' = r(s_t, a_t, g')$ \COMMENT{Compute reward for new goal}
+            \STATE Store $(s_t, a_t, r', s_{t+1}, g')$ in $\mathcal{R}$
+        \ENDFOR
+    \ENDFOR
+    \STATE Train agent using standard off-policy algorithm on $\mathcal{R}$
+\ENDFOR
+\end{algorithmic}
+\end{algorithm}
+
+\textbf{Goal Selection Strategies:}
+\begin{itemize}
+    \item \textbf{Final}: Use the final achieved state as goal
+    \item \textbf{Episode}: Sample from states achieved in the episode
+    \item \textbf{Random}: Sample random goals from goal space
+    \item \textbf{Future}: Use future achieved states as goals
+\end{itemize}
+
+\section{Feudal Networks}
+
+\subsection{Feudal Network Architecture}
+
+Inspired by feudal hierarchies, FuNs have a Manager-Worker structure:
+
+\textbf{Manager (High-level):}
+\begin{itemize}
+    \item Operates at lower temporal resolution (every $c$ steps)
+    \item Outputs direction vector in latent space
+    \item Receives dilated rewards over longer horizons
+\end{itemize}
+
+\textbf{Worker (Low-level):}
+\begin{itemize}
+    \item Operates at primitive action level
+    \item Maximizes dot product with manager's direction
+    \item Receives intrinsic rewards from manager
+\end{itemize}
+
+\subsection{Manager Objective}
+
+The manager learns to produce directions $d_t$ that guide the worker:
+
+\begin{equation}
+L_{\text{Manager}} = -\mathbb{E} \left[ \sum_{t=0}^T \gamma^t R_t \bigg| d_t = f_{\text{Manager}}(s_t) \right]
+\end{equation}
+
+where the manager's directions influence worker behavior through intrinsic rewards.
+
+\subsection{Worker Objective}
+
+The worker receives intrinsic rewards based on alignment with manager directions:
+
+\begin{equation}
+r_{\text{intrinsic}} = \alpha \cdot \text{cosine}(s_{t+c} - s_t, d_t)
+\end{equation}
+
+where $s_{t+c} - s_t$ represents the achieved direction in state space.
+
+\begin{equation}
+L_{\text{Worker}} = -\mathbb{E} \left[ \sum_{t=0}^T (R_t + r_{\text{intrinsic}}) \bigg| \pi_{\text{Worker}} \right]
+\end{equation}
+
+\section{Hierarchical Actor-Critic (HAC)}
+
+\subsection{Multi-Level Hierarchy}
+
+HAC extends actor-critic to multiple levels of hierarchy:
+
+\begin{itemize}
+    \item \textbf{Level $k$ Actor}: $\pi_k(g_k|s_t, g_{k+1})$ outputs subgoal for level $k-1$
+    \item \textbf{Level $k$ Critic}: $Q_k(s_t, g_k, g_{k+1})$ evaluates subgoal $g_k$
+    \item \textbf{Level 0}: Primitive actions in the environment
+\end{itemize}
+
+\subsection{Subgoal Testing}
+
+HAC includes subgoal testing to improve learning:
+
+\begin{algorithm}
+\caption{HAC Subgoal Testing}
+\begin{algorithmic}
+\REQUIRE Hierarchy levels $\{0, 1, \ldots, H\}$, test probability $p$
+\FOR{each transition $(s_t, g_t, s_{t+k})$ at level $i$}
+    \IF{random() $< p$}
+        \STATE Replace $g_t$ with $s_{t+k}$ \COMMENT{Test if subgoal was achievable}
+        \STATE Compute reward $r = R(s_t, s_{t+k}, g_{t+1})$
+        \STATE Store $(s_t, s_{t+k}, r, s_{t+k})$ for training
+    \ENDIF
+\ENDFOR
+\end{algorithmic}
+\end{algorithm}
+
+This helps the agent learn what subgoals are actually achievable.
+
+\section{Skills and Skill Discovery}
+
+\subsection{Skill Definition}
+
+\begin{definition}[Skill]
+A skill $\pi_z$ is a policy parameterized by a latent variable $z \sim p(z)$:
+\begin{equation}
+\pi_z: \mathcal{S} \to \Delta(\mathcal{A})
+\end{equation}
+Skills enable diverse behaviors without external rewards.
+\end{definition}
+
+\subsection{Diversity-Based Skill Discovery}
+
+\textbf{DIAYN (Diversity is All You Need):}
+
+Learn skills that are diverse and distinguishable:
+
+\begin{equation}
+\mathcal{F}(\theta, \phi) = I(S; Z) - I(A; Z | S)
+\end{equation}
+
+where:
+\begin{itemize}
+    \item $I(S; Z)$: States should be predictive of skills
+    \item $I(A; Z | S)$: Actions should not depend on skill given state
+\end{itemize}
+
+\textbf{Practical Objective:}
+\begin{equation}
+L = \mathbb{E}_{s \sim \pi_z} [\log q_\phi(z|s)] + \alpha H[\pi_z(a|s)]
+\end{equation}
+
+where $q_\phi(z|s)$ is a discriminator network.
+
+\subsection{Successor Features for Skills}
+
+Represent skills using successor features:
+
+\begin{equation}
+\psi^\pi(s, a) = \mathbb{E}_\pi \left[ \sum_{t=0}^\infty \gamma^t \phi(s_t, a_t) \bigg| s_0 = s, a_0 = a \right]
+\end{equation}
+
+Skills can be composed linearly:
+\begin{equation}
+Q^w(s, a) = (\psi^\pi(s, a))^T w
+\end{equation}
+
+for different reward vectors $w$.
+
+\section{Meta-Learning for Hierarchical RL}
+
+\subsection{Learning to Learn Hierarchies}
+
+Meta-learning can discover effective hierarchical structures:
+
+\begin{itemize}
+    \item \textbf{Architecture search}: Find optimal hierarchy depth and width
+    \item \textbf{Skill composition}: Learn how to combine primitive skills
+    \item \textbf{Temporal abstraction}: Automatically determine option lengths
+\end{itemize}
+
+\subsection{MAML for Hierarchical Policies}
+
+Apply Model-Agnostic Meta-Learning to hierarchical policies:
+
+\begin{equation}
+\theta^* = \arg\min_\theta \sum_{\mathcal{T}_i} L_{\mathcal{T}_i}(\theta - \alpha \nabla_\theta L_{\mathcal{T}_i}(\theta))
+\end{equation}
+
+where each task $\mathcal{T}_i$ requires different hierarchical behaviors.
+
+\section{Curriculum Learning and HRL}
+
+\subsection{Automatic Curriculum Generation}
+
+Hierarchical structures enable natural curriculum generation:
+
+\begin{itemize}
+    \item \textbf{Goal progression}: Start with simple goals, increase complexity
+    \item \textbf{Skill scaffolding}: Learn basic skills before complex compositions
+    \item \textbf{Temporal extension}: Gradually increase option durations
+\end{itemize}
+
+\subsection{Teacher-Student Frameworks}
+
+\begin{algorithm}
+\caption{Hierarchical Curriculum Learning}
+\begin{algorithmic}
+\REQUIRE Teacher policy $\pi_T$, student policy $\pi_S$, difficulty measure $D$
+\STATE Initialize simple goal distribution $\mathcal{G}_0$
+\FOR{curriculum step $k = 1, K$}
+    \STATE Sample goals $G_k \sim \mathcal{G}_{k-1}$
+    \STATE Train student on goals $G_k$ for $N$ episodes
+    \STATE Evaluate student performance on $G_k$
+    \IF{performance above threshold}
+        \STATE Expand goal distribution: $\mathcal{G}_k = \text{expand}(\mathcal{G}_{k-1})$
+    \ELSE
+        \STATE Keep current distribution: $\mathcal{G}_k = \mathcal{G}_{k-1}$
+    \ENDIF
+\ENDFOR
+\end{algorithmic}
+\end{algorithm}
+
+\section{Applications}
+
+\subsection{Robotics and Manipulation}
+
+\begin{examplebox}[Robot Assembly Task]
+Learning to assemble furniture using hierarchical RL:
+\begin{itemize}
+    \item \textbf{High-level}: Plan assembly sequence (place leg, attach arm, etc.)
+    \item \textbf{Mid-level}: Execute manipulation skills (grasp, move, align)
+    \item \textbf{Low-level}: Motor control (joint torques, force control)
+    \item \textbf{Benefits}: Skill reuse across different furniture types
+\end{itemize}
+
+The hierarchy enables transfer learning - once manipulation skills are learned, new assembly tasks require only high-level planning.
+\end{examplebox}
+
+\subsection{Navigation and Exploration}
+
+\begin{examplebox}[Multi-Room Navigation]
+Navigating complex environments with multiple rooms:
+\begin{itemize}
+    \item \textbf{High-level}: Choose which room to visit next
+    \item \textbf{Low-level}: Navigate within room to specific locations
+    \item \textbf{Skills}: Door opening, obstacle avoidance, path following
+    \item \textbf{Benefits}: Compositional generalization to new layouts
+\end{itemize}
+
+Options for navigation (e.g., "go to kitchen") can be reused across different houses.
+\end{examplebox}
+
+\subsection{Game Playing}
+
+\begin{examplebox}[Real-Time Strategy Games]
+Playing complex strategy games with hierarchical policies:
+\begin{itemize}
+    \item \textbf{Strategic level}: Long-term planning (economy, military strategy)
+    \item \textbf{Tactical level}: Battle management (unit positioning, coordination)
+    \item \textbf{Operational level}: Individual unit control (movement, combat)
+    \item \textbf{Benefits}: Human-interpretable strategies, better credit assignment
+\end{itemize}
+\end{examplebox}
+
+\section{Theoretical Analysis}
+
+\subsection{Sample Complexity of HRL}
+
+\begin{theorem}[HRL Sample Complexity]
+For hierarchical policies with $H$ levels and maximum option length $L$, the sample complexity can be reduced from $O(|\mathcal{S}||\mathcal{A}|^L)$ to $O(H \cdot |\mathcal{S}||\mathcal{A}|)$ under appropriate conditions.
+\end{theorem}
+
+Key conditions:
+\begin{itemize}
+    \item Meaningful temporal abstraction
+    \item Limited interaction between levels
+    \item Effective subgoal generation
+\end{itemize}
+
+\subsection{Convergence Guarantees}
+
+\begin{theorem}[Option-Critic Convergence]
+Under standard regularity conditions, Option-Critic converges to a local optimum of the hierarchical policy performance.
+\end{theorem}
+
+The proof extends standard policy gradient convergence to the hierarchical setting.
+
+\section{Challenges and Open Problems}
+
+\subsection{Hierarchy Design}
+
+\begin{itemize}
+    \item \textbf{Depth}: How many levels should the hierarchy have?
+    \item \textbf{Width}: How many options/skills at each level?
+    \item \textbf{Representation}: What should subgoals represent?
+    \item \textbf{Temporal scale}: What time scales should each level operate on?
+\end{itemize}
+
+\subsection{Credit Assignment}
+
+\begin{itemize}
+    \item \textbf{Inter-level}: How to assign credit across hierarchy levels?
+    \item \textbf{Temporal}: How to handle delayed rewards in long options?
+    \item \textbf{Counterfactual}: What would have happened with different subgoals?
+\end{itemize}
+
+\subsection{Skill Discovery}
+
+\begin{itemize}
+    \item \textbf{Diversity vs utility}: Balance between diverse and useful skills
+    \item \textbf{Compositional**: How to combine primitive skills effectively?
+    \item \textbf{Transfer**: How to adapt skills to new environments?
+\end{itemize}
+
+\section{Implementation Considerations}
+
+\subsection{Network Architecture}
+
+\textbf{Shared Representations:}
+\begin{itemize}
+    \item Common feature extraction across hierarchy levels
+    \item Attention mechanisms for relevant information
+    \item Separate heads for different abstraction levels
+\end{itemize}
+
+\textbf{Temporal Modeling:}
+\begin{itemize}
+    \item LSTMs/GRUs for maintaining state across option execution
+    \item Temporal convolutions for different time scales
+    \item Transformer architectures for long-range dependencies
+\end{itemize}
+
+\subsection{Training Procedures}
+
+\textbf{Curriculum Design:}
+\begin{itemize}
+    \item Start with short horizons, gradually increase
+    \item Begin with simple goals, add complexity
+    \item Pre-train low-level skills before high-level planning
+\end{itemize}
+
+\textbf{Regularization:}
+\begin{itemize}
+    \item Entropy bonuses for exploration at each level
+    \item Consistency losses between hierarchy levels
+    \item Skill diversity constraints
+\end{itemize}
+
+\section{Chapter Summary}
+
+Hierarchical Reinforcement Learning addresses the challenge of learning complex, long-horizon behaviors by introducing temporal and structural abstraction:
+
+\begin{itemize}
+    \item \textbf{Temporal abstraction**: Options and skills extend over multiple time steps
+    \item \textbf{Goal decomposition**: Complex objectives broken into subgoals
+    \item \textbf{Skill reuse**: Learned behaviors transfer across tasks
+    \item \textbf{Structured exploration**: Hierarchies guide exploration effectively
+\end{itemize}
+
+Key approaches and algorithms:
+\begin{itemize}
+    \item \textbf{Options framework**: Semi-Markov decision processes with temporal abstraction
+    \item \textbf{Goal-conditioned RL**: Universal value functions and HER
+    \item \textbf{Feudal networks}: Manager-worker hierarchies with intrinsic motivation
+    \item \textbf{Skill discovery**: Learning diverse, useful skills without external rewards
+    \item \textbf{Meta-learning**: Learning to learn hierarchical structures
+\end{itemize}
+
+Applications span robotics, navigation, game playing, and any domain requiring complex, long-term planning. The field continues to evolve with new approaches to automatic hierarchy discovery and skill composition.
+
+\begin{keyideabox}[Key Takeaways]
+\begin{enumerate}
+    \item Hierarchical RL enables learning of complex, long-horizon behaviors
+    \item Temporal abstraction dramatically improves sample efficiency
+    \item Goal-conditioned approaches enable flexible skill composition
+    \item Skill discovery methods learn useful behaviors without external rewards
+    \item Proper hierarchy design is crucial for effective learning
+\end{enumerate}
+\end{keyideabox}
+
+The next chapter will explore model-based reinforcement learning, which uses learned environment models to improve sample efficiency and enable planning.

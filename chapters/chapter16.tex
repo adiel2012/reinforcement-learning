@@ -1,4 +1,644 @@
-\chapter{Chapter 16 Title}
-\label{ch:chapter16}
+\chapter{Transfer Learning and Meta-Learning}
+\label{ch:transfer-meta-learning}
 
-This chapter will cover...
+\begin{keyideabox}[Chapter Overview]
+Transfer learning and meta-learning enable agents to leverage experience from previous tasks to learn new tasks more efficiently. This chapter covers domain adaptation, few-shot learning, Model-Agnostic Meta-Learning (MAML), and other approaches that allow RL agents to generalize across environments and quickly adapt to new situations with minimal additional training.
+\end{keyideabox}
+
+\begin{intuitionbox}[Learning to Learn Languages]
+Consider someone who already speaks English and French learning Spanish. They don't start from scratch - they can transfer knowledge about grammar concepts, language learning strategies, and vocabulary patterns. Similarly, a meta-learning agent that has learned to play many video games can quickly adapt to a new game by transferring general gaming strategies, common action patterns, and learning approaches. The key insight is that learning how to learn is often more valuable than learning any specific task.
+\end{intuitionbox}
+
+\section{Introduction to Transfer and Meta-Learning}
+
+\subsection{Motivation}
+
+Standard RL assumes agents learn each task independently, which leads to several limitations:
+
+\begin{itemize}
+    \item \textbf{Sample inefficiency}: Each new task requires learning from scratch
+    \item \textbf{Redundant learning}: Similar tasks solved independently
+    \item \textbf{Poor generalization}: No leverage of past experience
+    \item \textbf{Scalability issues}: Intractable for many real-world applications
+\end{itemize}
+
+Transfer learning and meta-learning address these challenges by:
+
+\begin{itemize}
+    \item \textbf{Knowledge reuse}: Leverage solutions from similar tasks
+    \item \textbf{Fast adaptation}: Quickly adapt to new environments
+    \item \textbf{Sample efficiency}: Learn new tasks with fewer samples
+    \item \textbf{Generalization**: Extract common patterns across tasks
+\end{itemize}
+
+\subsection{Taxonomy of Transfer Methods}
+
+\textbf{Transfer Learning:}
+\begin{itemize}
+    \item \textbf{Domain adaptation**: Same task, different environment
+    \item \textbf{Task transfer**: Different but related tasks
+    \item \textbf{Cross-modal transfer**: Different input/output modalities
+    \item \textbf{Sim-to-real transfer**: Simulation to real-world deployment
+\end{itemize}
+
+\textbf{Meta-Learning:}
+\begin{itemize}
+    \item \textbf{Few-shot learning**: Learn new tasks from few examples
+    \item \textbf{Learning to optimize**: Learn optimization algorithms
+    \item \textbf{Learning to explore**: Learn exploration strategies
+    \item \textbf{Learning representations**: Learn transferable features
+\end{itemize}
+
+\section{Transfer Learning in RL}
+
+\subsection{Value Function Transfer}
+
+Transfer learned value functions across related tasks:
+
+\textbf{Direct Transfer:}
+\begin{equation}
+V_{\text{target}}^{(0)}(s) = V_{\text{source}}(s)
+\end{equation}
+
+\textbf{Scaled Transfer:}
+\begin{equation}
+V_{\text{target}}^{(0)}(s) = \alpha V_{\text{source}}(s) + \beta
+\end{equation}
+
+\textbf{Feature-Based Transfer:}
+\begin{equation}
+V_{\text{target}}(s) = \phi(s)^T w_{\text{target}}
+\end{equation}
+
+where $\phi(s)$ are features learned from source tasks.
+
+\subsection{Policy Transfer}
+
+\textbf{Direct Policy Transfer:}
+\begin{equation}
+\pi_{\text{target}}^{(0)}(a|s) = \pi_{\text{source}}(a|s)
+\end{equation}
+
+\textbf{Policy Distillation:}
+Learn target policy to mimic source policy behavior:
+\begin{equation}
+L_{\text{distill}} = \mathbb{E}_{s \sim \rho} [D_{KL}(\pi_{\text{source}}(\cdot|s) \| \pi_{\text{target}}(\cdot|s))]
+\end{equation}
+
+\textbf{Progressive Networks:}
+Gradually add capacity while preserving source knowledge:
+
+\begin{algorithm}
+\caption{Progressive Networks}
+\begin{algorithmic}
+\REQUIRE Source network $f_1$, target task data
+\STATE Freeze source network parameters
+\STATE Add new column $f_2$ with lateral connections from $f_1$
+\STATE $h_2^{(i)} = \sigma(W_2^{(i)} h_2^{(i-1)} + U_2^{(i)} h_1^{(i)})$
+\STATE Train only $f_2$ parameters on target task
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Instance-Based Transfer}
+
+Use experience from source tasks to accelerate learning:
+
+\textbf{Experience Replay Transfer:}
+\begin{itemize}
+    \item Store experiences from source tasks
+    \item Mix with target task experiences during training
+    \item Weight source experiences based on relevance
+\end{itemize}
+
+\textbf{Importance Weighting:}
+\begin{equation}
+w(s,a) = \frac{p_{\text{target}}(s,a)}{p_{\text{source}}(s,a)}
+\end{equation}
+
+\begin{algorithm}
+\caption{Weighted Experience Replay}
+\begin{algorithmic}
+\REQUIRE Source replay buffer $\mathcal{D}_s$, target replay buffer $\mathcal{D}_t$
+\FOR{each training step}
+    \STATE Sample batch from $\mathcal{D}_t$
+    \STATE Sample batch from $\mathcal{D}_s$ with importance weights
+    \STATE Train on combined weighted batch
+\ENDFOR
+\end{algorithmic>
+\end{algorithm>
+
+\section{Domain Adaptation}
+
+\subsection{Sim-to-Real Transfer}
+
+Transfer from simulation to real-world deployment:
+
+\textbf{Domain Randomization:}
+Train on diverse simulated environments:
+\begin{itemize>
+    \item Randomize physics parameters
+    \item Vary visual appearance
+    \item Add noise and disturbances
+    \item Change environment geometry
+\end{itemize>
+
+\begin{algorithm}
+\caption{Domain Randomization}
+\begin{algorithmic}
+\REQUIRE Parameter distributions $\mathcal{P}$, base environment $\mathcal{E}$
+\FOR{each episode}
+    \STATE Sample parameters $\theta \sim \mathcal{P}$
+    \STATE Configure environment $\mathcal{E}(\theta)$
+    \STATE Train agent in $\mathcal{E}(\theta)$
+\ENDFOR
+\end{algorithmic>
+\end{algorithm>
+
+\textbf{Adversarial Domain Adaptation:}
+Learn domain-invariant features:
+
+\begin{align}
+L_{\text{task}} &= \mathbb{E}_{(s,a,r) \sim \mathcal{D}_s} [L_{\text{RL}}(s,a,r; \theta)] \\
+L_{\text{domain}} &= \mathbb{E}_{s \sim \mathcal{D}_s \cup \mathcal{D}_t} [\log D(f(s))] \\
+L_{\text{total}} &= L_{\text{task}} - \lambda L_{\text{domain}}
+\end{align}
+
+where $D$ is a domain classifier and $f$ extracts features.
+
+\subsection{Visual Domain Adaptation}
+
+Transfer across different visual environments:
+
+\textbf{GAN-Based Transfer:}
+\begin{itemize>
+    \item Train CycleGAN to translate between domains
+    \item Apply learned policy to translated observations
+    \item Fine-tune on target domain
+\end{itemize>
+
+\textbf{Segmentation-Based Transfer:}
+\begin{itemize>
+    \item Learn semantic segmentation in source domain
+    \item Use segmentation masks as domain-invariant representation
+    \item Train policy on segmentation masks
+\end{itemize>
+
+\section{Meta-Learning Fundamentals}
+
+\subsection{Problem Formulation}
+
+Meta-learning operates on distributions over tasks:
+
+\textbf{Task Distribution:} $p(\mathcal{T})$ where each task $\mathcal{T}_i$ has:
+\begin{itemize}
+    \item Training set $\mathcal{D}_i^{\text{train}}$
+    \item Test set $\mathcal{D}_i^{\text{test}}$
+    \item Task-specific parameters $\phi_i$
+\end{itemize}
+
+\textbf{Meta-Objective:}
+\begin{equation}
+\min_\theta \mathbb{E}_{\mathcal{T} \sim p(\mathcal{T})} [L(\mathcal{D}^{\text{test}}, \phi^*(\mathcal{D}^{\text{train}}, \theta))]
+\end{equation>
+
+where $\phi^*$ represents task adaptation given meta-parameters $\theta$.
+
+\subsection{Types of Meta-Learning}
+
+\textbf{Metric-Based:}
+Learn distance metrics for few-shot classification:
+\begin{equation}
+p(y|x, \mathcal{S}) = \frac{\exp(-d(f(x), f(x_i)))}{\sum_j \exp(-d(f(x), f(x_j)))}
+\end{equation>
+
+\textbf{Model-Based:}
+Learn models that can quickly adapt:
+\begin{itemize}
+    \item Memory-augmented networks
+    \item Neural Turing machines
+    \item Recurrent models with external memory
+\end{itemize}
+
+\textbf{Optimization-Based:}
+Learn optimization procedures:
+\begin{itemize}
+    \item Learn learning rates and update rules
+    \item Learn initialization points
+    \item Learn optimizer architectures
+\end{itemize}
+
+\section{Model-Agnostic Meta-Learning (MAML)}
+
+\subsection{MAML Algorithm}
+
+MAML learns initialization parameters that enable fast adaptation:
+
+\begin{algorithm}
+\caption{MAML}
+\begin{algorithmic}
+\REQUIRE Task distribution $p(\mathcal{T})$, meta learning rates $\alpha, \beta$
+\STATE Initialize meta-parameters $\theta$
+\WHILE{not converged}
+    \STATE Sample batch of tasks $\{\mathcal{T}_i\}$ from $p(\mathcal{T})$
+    \FOR{each task $\mathcal{T}_i$}
+        \STATE Sample $K$ examples $\mathcal{D}_i = \{(x_j, y_j)\}$ from $\mathcal{T}_i$
+        \STATE Compute adapted parameters: $\phi_i = \theta - \alpha \nabla_\theta L(\mathcal{D}_i, \theta)$
+        \STATE Sample new examples $\mathcal{D}_i'$ from $\mathcal{T}_i$
+        \STATE Compute meta-loss: $L_i = L(\mathcal{D}_i', \phi_i)$
+    \ENDFOR
+    \STATE Update meta-parameters: $\theta = \theta - \beta \nabla_\theta \sum_i L_i$
+\ENDWHILE
+\end{algorithmic}
+\end{algorithm>
+
+\textbf{Key Insight:} Learn parameters such that one gradient step leads to good performance.
+
+\subsection{MAML for Reinforcement Learning}
+
+\textbf{RL-MAML Adaptation:}
+\begin{itemize}
+    \item Replace supervised loss with RL objective
+    \item Use policy gradient for inner updates
+    \item Collect trajectories for meta-gradient computation
+\end{itemize}
+
+\begin{algorithm}
+\caption{MAML for RL}
+\begin{algorithmic}
+\REQUIRE Task distribution $p(\mathcal{T})$, adaptation steps $K$
+\STATE Initialize policy parameters $\theta$
+\FOR{meta-iteration}
+    \STATE Sample tasks $\{\mathcal{T}_i\}$ from $p(\mathcal{T})$
+    \FOR{each task $\mathcal{T}_i$}
+        \STATE $\phi_i^{(0)} = \theta$
+        \FOR{adaptation step $k = 1, K$}
+            \STATE Collect trajectories using $\pi_{\phi_i^{(k-1)}}$
+            \STATE Compute policy gradient: $g_i^{(k)} = \nabla_{\phi} J(\phi) \big|_{\phi=\phi_i^{(k-1)}}$
+            \STATE Update: $\phi_i^{(k)} = \phi_i^{(k-1)} + \alpha g_i^{(k)}$
+        \ENDFOR
+        \STATE Collect meta-test trajectories using $\pi_{\phi_i^{(K)}}$
+        \STATE Compute meta-gradient contribution
+    \ENDFOR
+    \STATE Update meta-parameters using meta-gradients
+\ENDFOR
+\end{algorithmic>
+\end{algorithm>
+
+\subsection{MAML Variants}
+
+\textbf{First-Order MAML (FOMAML):}
+Ignore second-order derivatives for computational efficiency:
+\begin{equation}
+\nabla_\theta L_{\text{meta}} \approx \nabla_{\phi} L(\mathcal{D}^{\text{test}}, \phi)
+\end{equation>
+
+\textbf{Reptile:}
+Repeatedly update toward task-specific solutions:
+\begin{equation}
+\theta \leftarrow \theta + \epsilon (\phi_i - \theta)
+\end{equation>
+
+where $\phi_i$ is the result of multiple gradient steps on task $i$.
+
+\textbf{Probabilistic MAML:}
+Learn distributions over parameters:
+\begin{equation}
+q(\phi|\theta) = \mathcal{N}(\mu(\theta), \Sigma(\theta))
+\end{equation>
+
+\section{Memory-Based Meta-Learning}
+
+\subsection{Neural Turing Machines for RL}
+
+Augment agents with external memory:
+
+\textbf{Memory Operations:}
+\begin{itemize}
+    \item \textbf{Read}: $r_t = \sum_i w_t^r(i) M_t(i)$
+    \item \textbf{Write}: $M_t(i) = M_{t-1}(i) w_t^w(i) [e_t + a_t]$
+    \item \textbf{Erase**: $M_t(i) = M_{t-1}(i) [1 - w_t^e(i) e_t]$
+\end{itemize>
+
+\textbf{Attention Mechanisms:}
+\begin{align}
+w_t^c(i) &= \frac{\exp(\beta_t K[k_t, M_t(i)])}{\sum_j \exp(\beta_t K[k_t, M_t(j)])} \quad \text{(content)} \\
+w_t^l(i) &= \sum_j w_{t-1}(j) s(i-j) \quad \text{(location)}
+\end{align>
+
+\subsection{Memory-Augmented Policy Networks}
+
+\begin{algorithm}
+\caption{Memory-Augmented RL}
+\begin{algorithmic>
+\REQUIRE Memory size $N$, memory dimension $M$
+\STATE Initialize controller network, memory matrix $\mathbf{M} \in \mathbb{R}^{N \times M}$
+\FOR{each episode}
+    \STATE Reset memory to initial state
+    \FOR{each time step}
+        \STATE Read from memory: $r_t = \text{read}(\mathbf{M}, s_t)$
+        \STATE Choose action: $a_t = \pi(s_t, r_t)$
+        \STATE Update memory: $\mathbf{M} = \text{write}(\mathbf{M}, s_t, a_t, r_t)$
+    \ENDFOR
+\ENDFOR
+\end{algorithmic>
+\end{algorithm>
+
+\subsection{Episodic Control
+
+Store and retrieve successful experiences:
+
+\textbf{Episodic Memory:}
+\begin{equation}
+Q_{\text{EC}}(s,a) = \sum_{i \in \mathcal{N}_k(s,a)} K(s,a,s_i,a_i) \cdot R_i
+\end{equation}
+
+where $\mathcal{N}_k(s,a)$ are the $k$ nearest neighbors and $K$ is a kernel function.
+
+\textbf{Neural Episodic Control:}
+\begin{itemize}
+    \item Learn state embeddings using neural networks
+    \item Store experiences in differentiable neural dictionary
+    \item Retrieve similar experiences for action selection
+\end{itemize}
+
+\section{Gradient-Based Meta-Learning}
+
+\subsection{Learning to Optimize}
+
+\textbf{Learned Optimizers:}
+\begin{equation}
+\theta_{t+1} = \theta_t + \text{Optimizer}(\nabla L_t, h_t; \phi)
+\end{equation>
+
+where the optimizer is a learned function with parameters $\phi$.
+
+\textbf{LSTM Optimizer:}
+\begin{align>
+g_t &= \nabla_{\theta_t} L(\theta_t) \\
+h_t, c_t &= \text{LSTM}(g_t, h_{t-1}, c_{t-1}; \phi) \\
+\theta_{t+1} &= \theta_t + h_t
+\end{align>
+
+\begin{algorithm}
+\caption{Learning to Optimize}
+\begin{algorithmic>
+\REQUIRE Optimizer parameters $\phi$, problem distribution $p(\mathcal{P})$
+\FOR{meta-iteration}
+    \STATE Sample optimization problem $\mathcal{P}_i \sim p(\mathcal{P})$
+    \STATE Initialize optimizee parameters $\theta_0$
+    \FOR{optimization step $t = 1, T$}
+        \STATE Compute gradient: $g_t = \nabla_{\theta_{t-1}} L_{\mathcal{P}_i}(\theta_{t-1})$
+        \STATE Update: $\theta_t = \theta_{t-1} + \text{Optimizer}(g_t; \phi)$
+    \ENDFOR
+    \STATE Compute meta-loss: $L_{\text{meta}} = L_{\mathcal{P}_i}(\theta_T)$
+    \STATE Update optimizer: $\phi \leftarrow \phi - \alpha \nabla_\phi L_{\text{meta}}$
+\ENDFOR
+\end{algorithmic>
+\end{algorithm>
+
+\subsection{Meta-Gradient Methods}
+
+Learn hyperparameters by differentiating through the optimization process:
+
+\begin{equation}
+\frac{d L(\theta^*(\lambda))}{d \lambda} = \frac{d L}{d \theta^*} \frac{d \theta^*}{d \lambda}
+\end{equation>
+
+\textbf{Applications:**
+\begin{itemize>
+    \item Learning rates and momentum parameters
+    \item Regularization strengths
+    \item Architecture parameters
+    \item Loss function weights
+\end{itemize>
+
+\section{Few-Shot Learning in RL}
+
+\subsection{k-Shot Learning Problem}
+
+Learn new tasks from $k$ examples or episodes:
+
+\textbf{Support Set:} $\mathcal{S} = \{(s_1, a_1, r_1), \ldots, (s_k, a_k, r_k)\}$
+\textbf{Query Set:} $\mathcal{Q} = \{(s_{k+1}, a_{k+1}, r_{k+1}), \ldots\}$
+
+\textbf{Objective:**
+\begin{equation}
+\min_\theta \mathbb{E}_{\mathcal{T}} \left[ L(\mathcal{Q}, f(\mathcal{S}, \theta)) \right]
+\end{equation>
+
+\subsection{Prototypical Networks for RL}
+
+Learn prototypical policies for each task:
+
+\begin{equation}
+c_k = \frac{1}{|\mathcal{S}_k|} \sum_{(s,a) \in \mathcal{S}_k} f(s,a)
+\end{equation>
+
+\begin{equation}
+p(y=k|s,a) = \frac{\exp(-d(f(s,a), c_k))}{\sum_{k'} \exp(-d(f(s,a), c_{k'}))}
+\end{equation>
+
+\subsection{Matching Networks for RL}
+
+Use attention mechanisms over support set:
+
+\begin{equation>
+\pi(a|s) = \sum_{i=1}^k \alpha(s, s_i) \pi_i(a|s_i)
+\end{equation>
+
+where $\alpha(s, s_i)$ is an attention weight.
+
+\section{Continual Learning}
+
+\subsection{Catastrophic Forgetting}
+
+When learning new tasks, neural networks often forget previous tasks.
+
+\textbf{Causes:**
+\begin{itemize>
+    \item Parameter interference between tasks
+    \item Limited model capacity
+    \item Lack of replay from previous tasks
+\end{itemize>
+
+\subsection{Regularization-Based Approaches}
+
+\textbf{Elastic Weight Consolidation (EWC):}
+\begin{equation>
+L(\theta) = L_{\text{new}}(\theta) + \lambda \sum_i F_i (\theta_i - \theta_i^*)^2
+\end{equation>
+
+where $F_i$ is the Fisher Information Matrix diagonal and $\theta^*$ are previous task parameters.
+
+\textbf{Synaptic Intelligence:**
+Track parameter importance during learning:
+\begin{equation}
+\Omega_i = \sum_k \frac{g_{i,k} \Delta \theta_{i,k}}{\Delta \theta_{i,k}^2 + \xi}
+\end{equation>
+
+\subsection{Architecture-Based Approaches}
+
+\textbf{PackNet:**
+\begin{itemize>
+    \item Train network on first task
+    \item Prune unimportant weights
+    \item Train remaining weights on second task
+    \item Repeat for additional tasks
+\end{itemize>
+
+\textbf{Progressive Neural Networks:**
+\begin{itemize>
+    \item Add new modules for each task
+    \item Lateral connections from previous modules
+    \item No parameter interference
+\end{itemize>
+
+\section{Applications}
+
+\subsection{Robotics}
+
+\begin{examplebox}[Robot Manipulation]
+Meta-learning for robotic grasping across different objects:
+\begin{itemize>
+    \item \textbf{Task distribution:** Different object shapes, sizes, materials
+    \item \textbf{Meta-training:** Learn grasping strategies across objects
+    \item \textbf{Fast adaptation:** Quickly adapt to new objects with few attempts
+    \item \textbf{Results:** 90% success rate on new objects with 5 examples
+\end{itemize>
+
+MAML enables robots to leverage experience from grasping thousands of objects to quickly learn how to grasp new, previously unseen objects.
+\end{examplebox>
+
+\subsection{Game Playing}
+
+\begin{examplebox}[Strategy Game Learning]
+Meta-learning for real-time strategy games:
+\begin{itemize>
+    \item \textbf{Task distribution:** Different maps, opponents, game modes
+    \item \textbf{Meta-training:** Learn general strategies and adaptation procedures
+    \item \textbf{Fast adaptation:** Quickly adapt to new maps or opponent styles
+    \item \textbf{Results:** Achieves expert level on new maps within 100 games
+\end{itemize>
+
+The agent learns meta-strategies that transfer across different game scenarios, enabling rapid adaptation to new challenges.
+\end{examplebox>
+
+\subsection{Personalization}
+
+\begin{examplebox}[Recommendation Systems]
+Few-shot learning for personalized recommendations:
+\begin{itemize>
+    \item \textbf{Task distribution:** Different user preferences and behaviors
+    \item \textbf{Meta-training:** Learn general preference patterns across users
+    \item \textbf{Fast adaptation:** Personalize to new users with minimal interaction
+    \item \textbf{Results:** Achieves good recommendations with 5-10 user interactions
+\end{itemize>
+
+Meta-learning enables recommender systems to quickly personalize to new users by leveraging patterns learned from millions of existing users.
+\end{examplebox>
+
+\section{Theoretical Analysis}
+
+\subsection{Generalization Bounds}
+
+\begin{theorem}[Meta-Learning Generalization]
+For MAML with $N$ tasks and $K$ examples per task, the meta-test error is bounded by:
+\begin{equation}
+\mathbb{E}[L_{\text{test}}] \leq \mathbb{E}[L_{\text{train}}] + O\left(\sqrt{\frac{C(F)}{NK}} + \sqrt{\frac{\log(1/\delta)}{N}}\right)
+\end{equation}
+where $C(F)$ is the complexity of the function class.
+\end{theorem>
+
+\subsection{Sample Complexity}
+
+\begin{theorem}[MAML Sample Complexity]
+To achieve $\epsilon$-optimal performance, MAML requires:
+\begin{equation}
+N = O\left(\frac{d}{\epsilon^2}\right), \quad K = O\left(\frac{1}{\epsilon}\right)
+\end{equation}
+tasks and examples per task, where $d$ is the parameter dimension.
+\end{theorem>
+
+\section{Implementation Considerations}
+
+\subsection{Computational Challenges}
+
+\textbf{Second-Order Derivatives:**
+\begin{itemize}
+    \item MAML requires computing gradients of gradients
+    \item Use automatic differentiation frameworks
+    \item Consider first-order approximations for efficiency
+\end{itemize>
+
+\textbf{Memory Requirements:**
+\begin{itemize>
+    \item Store computation graphs for multiple tasks
+    \item Gradient accumulation across tasks
+    \item Checkpointing for memory efficiency
+\end{itemize>
+
+\subsection{Hyperparameter Tuning}
+
+\textbf{Learning Rates:**
+\begin{itemize>
+    \item Inner loop learning rate: Often higher ($\alpha = 0.01-0.1$)
+    \item Outer loop learning rate: Often lower ($\beta = 0.001$)
+    \item Adaptive learning rates for different parameters
+\end{itemize>
+
+\textbf{Task Sampling:**
+\begin{itemize>
+    \item Curriculum over task difficulty
+    \item Balanced sampling across task types
+    \item Online vs offline task generation
+\end{itemize>
+
+\subsection{Evaluation Protocols}
+
+\textbf{Few-Shot Evaluation:**
+\begin{itemize>
+    \item Separate meta-train/meta-test task distributions
+    \item Report performance vs number of adaptation examples
+    \item Average over multiple random seeds and task samples
+\end{itemize>
+
+\textbf{Transfer Evaluation:**
+\begin{itemize>
+    \item Compare against training from scratch
+    \item Measure adaptation speed and final performance
+    \item Test on increasingly different target domains
+\end{itemize>
+
+\section{Chapter Summary}
+
+Transfer learning and meta-learning enable efficient learning across tasks and domains:
+
+\begin{itemize>
+    \item \textbf{Transfer learning**: Leverages knowledge from related tasks for faster learning
+    \item \textbf{Meta-learning**: Learns to learn, enabling few-shot adaptation
+    \item \textbf{Domain adaptation**: Handles distribution shift between training and deployment
+    \item \textbf{Continual learning**: Learns new tasks without forgetting previous ones
+\end{itemize}
+
+Key approaches and algorithms:
+\begin{itemize>
+    \item \textbf{Value/policy transfer**: Direct transfer of learned functions
+    \item \textbf{MAML**: Model-agnostic meta-learning for gradient-based adaptation
+    \item \textbf{Memory-based methods**: External memory for storing and retrieving experiences
+    \item \textbf{Optimization learning**: Learning to optimize and adapt quickly
+    \item \textbf{Regularization approaches**: Preventing catastrophic forgetting
+\end{itemize>
+
+Applications span robotics, game playing, recommendation systems, and any domain where rapid adaptation is valuable. The field continues advancing with better adaptation algorithms, theoretical understanding, and practical deployment strategies.
+
+\begin{keyideabox}[Key Takeaways]
+\begin{enumerate}
+    \item Transfer and meta-learning dramatically improve sample efficiency
+    \item MAML provides a general framework for learning to adapt quickly
+    \item Memory-based approaches enable rapid integration of new information
+    \item Continual learning requires careful handling of catastrophic forgetting
+    \item Success depends on meaningful task relatedness and proper evaluation
+\end{enumerate}
+\end{keyideabox}
+
+The next chapter will explore real-world applications and deployment considerations for reinforcement learning systems, including safety, robustness, and engineering challenges.
