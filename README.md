@@ -95,9 +95,9 @@
 
 | Learning Style | Best For | Time Investment | Start Here |
 |---|---|---|---|
-| 🏃‍♂️ **Hands-On Explorer** | Engineers, Practitioners | 2-3 hours/chapter | [Chapter 1 Notebook](notebooks/chapter01_mathematical_prerequisites.ipynb) |
+| 🏃‍♂️ **Hands-On Explorer** | Engineers, Practitioners | 2-3 hours/chapter | [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/adiel2012/reinforcement-learning/blob/master/notebooks/chapter01_mathematical_prerequisites.ipynb) |
 | 📚 **Theory-First Scholar** | Researchers, Academics | 1-2 hours/chapter | [Complete PDF](reinforcement_learning_book.pdf) |
-| ⚡ **Quick Implementer** | Experienced Developers | 30-60 min/chapter | [Chapter 5: Q-Learning](notebooks/chapter05_temporal_difference.ipynb) |
+| ⚡ **Quick Implementer** | Experienced Developers | 30-60 min/chapter | [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/adiel2012/reinforcement-learning/blob/master/notebooks/chapter05_temporal_difference.ipynb) |
 | 🎓 **Structured Learner** | Students, Beginners | 3-4 hours/chapter | Sequential 1→2→3→4→5 |
 
 </div>
@@ -160,19 +160,21 @@ docker run -p 8888:8888 -v $(pwd):/work jupyter/scipy-notebook
 <details>
 <summary><b>📖 Chapter 2: Markov Decision Processes</b> | ⏱️ 15 min | 🟡 Fundamental</summary>
 
-[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/adiel2012/reinforcement-learning/blob/master/notebooks/chapter02_mdps_optimized.ipynb)
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/adiel2012/reinforcement-learning/blob/master/notebooks/chapter02_mdps.ipynb)
 
-**⚡ Optimized for Speed** - 10x faster than standard implementations
+**🎯 Core MDP Theory** - Build your foundation
 
 **🏗️ What You'll Build:**
 - Custom GridWorld MDP from scratch
-- Vectorized value iteration with early convergence
-- Matrix-based policy evaluation
+- Value iteration with convergence tracking
+- Policy evaluation and improvement
 - Interactive Bellman equation visualization
 
-**⚡ Performance Boost:**
-- Original: `chapter02_mdps.ipynb` (~10s execution)
-- **Optimized: `chapter02_mdps_optimized.ipynb` (~1s execution)**
+**📚 Key Concepts:**
+- Markov Decision Process formulation
+- Bellman optimality equations
+- Value functions and policies
+- Computational complexity analysis
 
 </details>
 
@@ -415,7 +417,7 @@ pandas >= 1.4.0          # Data manipulation
 ├── 📖 reinforcement_learning_book.tex    # 🔧 LaTeX source for PDF compilation
 ├── 📁 notebooks/                         # 💻 18 Interactive Jupyter notebooks
 │   ├── 📓 chapter01_mathematical_prerequisites.ipynb
-│   ├── 📓 chapter02_mdps_optimized.ipynb      # ⚡ Performance optimized
+│   ├── 📓 chapter02_mdps.ipynb
 │   ├── 📓 chapter03_dynamic_programming.ipynb
 │   ├── 📓 chapter04_monte_carlo.ipynb
 │   ├── 📓 chapter05_temporal_difference.ipynb
@@ -617,7 +619,7 @@ This work builds upon decades of pioneering research:
 
 ### 🎯 **Ready to Master Reinforcement Learning?**
 
-[![Open Chapter 1](https://img.shields.io/badge/🚀%20Start%20Learning-Chapter%201%20Mathematical%20Prerequisites-blue?style=for-the-badge)](notebooks/chapter01_mathematical_prerequisites.ipynb)
+[![Open Chapter 1](https://img.shields.io/badge/🚀%20Start%20Learning-Chapter%201%20Mathematical%20Prerequisites-blue?style=for-the-badge)](https://colab.research.google.com/github/adiel2012/reinforcement-learning/blob/master/notebooks/chapter01_mathematical_prerequisites.ipynb)
 
 [![Download PDF](https://img.shields.io/badge/📖%20Download%20PDF-Complete%20Textbook%20(613KB)-red?style=for-the-badge)](reinforcement_learning_book.pdf)
 
